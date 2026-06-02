@@ -73,7 +73,48 @@ test "resolved plan includes module-qualified dependencies" {
     try std.testing.expectEqualStrings("shared.shared_text", steps[1].dependencies[0]);
 }
 
-test "query resolves module address and resource metadata is ignored" {
+test "deterministic schema fixture validates and custom payload is queryable" {
+    var graph = try circuitry.loadFile(std.testing.allocator, std.testing.io, "tests/fixtures/schema-valid.circuitry.yaml");
+    defer graph.deinit();
+    try circuitry.validate(std.testing.allocator, &graph);
+
+    try std.testing.expectEqualStrings("extension", circuitry.query.resourceKind(&graph, "example_extension").?);
+    const payload = circuitry.query.customResourcePayload(&graph, "example_extension", "extension") orelse return error.TestExpectedResource;
+    const package = circuitry.value.objectGet(payload, "package") orelse return error.TestExpectedResource;
+    try std.testing.expectEqualStrings("@zinc/example", package.string);
+
+    const schema = circuitry.query.modelSchema(&graph, "assistant") orelse return error.TestExpectedResource;
+    try std.testing.expect(circuitry.schema.validate(schema));
+    const sample_body = circuitry.query.resourceBody(&graph, "sample_answer") orelse return error.TestExpectedResource;
+    const sample_value = circuitry.value.objectGet(sample_body, "value") orelse return error.TestExpectedResource;
+    try std.testing.expect(circuitry.schema.validateValue(schema, sample_value));
+}
+
+// Covers unknown operators, enum shape, and invalid pattern diagnostics.
+test "deterministic schema fixture rejects invalid operators" {
+    var graph = try circuitry.loadFile(std.testing.allocator, std.testing.io, "tests/fixtures/schema-invalid.circuitry.yaml");
+    defer graph.deinit();
+    var diagnostics: circuitry.diagnostic.List = .empty;
+    defer {
+        circuitry.diagnostic.deinitList(std.testing.allocator, diagnostics.items);
+        diagnostics.deinit(std.testing.allocator);
+    }
+    try circuitry.collectDiagnostics(std.testing.allocator, &graph, &diagnostics);
+    try std.testing.expect(diagnostics.items.len >= 3);
+    var saw_minimum = false;
+    var saw_enum = false;
+    var saw_pattern = false;
+    for (diagnostics.items) |item| {
+        if (std.mem.indexOf(u8, item.message, "minimum") != null and std.mem.indexOf(u8, item.path, "resources.assistant.model.schema.score.minimum") != null) saw_minimum = true;
+        if (std.mem.indexOf(u8, item.message, "must be a list") != null and std.mem.indexOf(u8, item.path, "resources.assistant.model.schema.status.enum") != null) saw_enum = true;
+        if (std.mem.indexOf(u8, item.message, "is invalid") != null and std.mem.indexOf(u8, item.path, "resources.assistant.model.schema.slug.pattern") != null) saw_pattern = true;
+    }
+    try std.testing.expect(saw_minimum);
+    try std.testing.expect(saw_enum);
+    try std.testing.expect(saw_pattern);
+}
+
+ test "query resolves module address and resource metadata is ignored" {
     var graph = try circuitry.loadFile(std.testing.allocator, std.testing.io, "tests/fixtures/metadata-resource.circuitry.yaml");
     defer graph.deinit();
     const assistant = circuitry.graph.resource(&graph, "assistant") orelse return error.TestExpectedResource;

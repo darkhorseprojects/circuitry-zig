@@ -28,6 +28,42 @@ pub fn resourcesByKind(allocator: std.mem.Allocator, graph: *const graph_mod.Gra
     return out.toOwnedSlice(allocator);
 }
 
+pub fn resourceKind(graph: *const graph_mod.Graph, resource_id: []const u8) ?[]const u8 {
+    const resource = graph_mod.resource(graph, resource_id) orelse return null;
+    return res.kindName(resource);
+}
+
+pub fn resourceBody(graph: *const graph_mod.Graph, resource_id: []const u8) ?*const val.Value {
+    const resource = graph_mod.resource(graph, resource_id) orelse return null;
+    return res.body(resource);
+}
+
+pub fn customResourcePayload(graph: *const graph_mod.Graph, resource_id: []const u8, kind_name: []const u8) ?*const val.Value {
+    const resource = graph_mod.resource(graph, resource_id) orelse return null;
+    if (!std.mem.eql(u8, res.kindName(resource) orelse return null, kind_name)) return null;
+    return res.body(resource);
+}
+
+pub fn modelSchema(graph: *const graph_mod.Graph, resource_id: []const u8) ?*const val.Value {
+    const body = resourceBody(graph, resource_id) orelse return null;
+    return val.objectGet(body, "schema");
+}
+
+pub fn runSchema(graph: *const graph_mod.Graph, resource_id: []const u8) ?*const val.Value {
+    const body = resourceBody(graph, resource_id) orelse return null;
+    return val.objectGet(body, "schema");
+}
+
+pub fn fieldShape(value: *const val.Value) FieldShape {
+    return switch (value.*) {
+        .mapping => .map,
+        .sequence => .list,
+        else => .scalar,
+    };
+}
+
+pub const FieldShape = enum { map, list, scalar };
+
 pub fn field(graph: *const graph_mod.Graph, resource_id: []const u8, field_name: []const u8) ?*const val.Value {
     const resource = graph_mod.resource(graph, resource_id) orelse return null;
     const body = res.body(resource) orelse return null;

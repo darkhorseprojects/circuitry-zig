@@ -140,7 +140,11 @@ fn validateResource(allocator: std.mem.Allocator, graph: *const graph_mod.Graph,
                     else => return e,
                 };
             } else try diag.add(allocator, diagnostics, "invalid_model_tools", "resources.model.tools", "model.tools must be a list", .{});
-            if (val.objectGet(body, "schema")) |s| if (!schema.validate(s)) try diag.add(allocator, diagnostics, "invalid_schema", "resources.model.schema", "invalid schema", .{});
+            if (val.objectGet(body, "schema")) |s| {
+                const schema_path = try std.fmt.allocPrint(allocator, "resources.{s}.model.schema", .{id});
+                defer allocator.free(schema_path);
+                try schema.validateWithDiagnostics(allocator, diagnostics, s, schema_path);
+            }
         }
     } else if (std.mem.eql(u8, kind_name, "run")) {
         if (body.* != .mapping) try diag.add(allocator, diagnostics, "invalid_run", "resources.run", "run must be an object", .{}) else {
@@ -154,7 +158,11 @@ fn validateResource(allocator: std.mem.Allocator, graph: *const graph_mod.Graph,
                     if (entry.value_ptr.* == .string) try validateAddressOrRuntimeInput(allocator, diagnostics, aliases, resources, entry.value_ptr.string, "resources.run.input") else try diag.add(allocator, diagnostics, "invalid_run_input", "resources.run.input", "run input values must be address strings", .{});
                 }
             } else try diag.add(allocator, diagnostics, "invalid_run_input", "resources.run.input", "run.input must be a map", .{});
-            if (val.objectGet(body, "schema")) |s| if (!schema.validate(s)) try diag.add(allocator, diagnostics, "invalid_schema", "resources.run.schema", "invalid schema", .{});
+            if (val.objectGet(body, "schema")) |s| {
+                const schema_path = try std.fmt.allocPrint(allocator, "resources.{s}.run.schema", .{id});
+                defer allocator.free(schema_path);
+                try schema.validateWithDiagnostics(allocator, diagnostics, s, schema_path);
+            }
         }
     }
 }
@@ -176,7 +184,9 @@ fn validateExportInput(allocator: std.mem.Allocator, diagnostics: *diag.List, in
     var it = input.mapping.iterator();
     while (it.next()) |entry| {
         if (!addr.validIdentifier(entry.key_ptr.*)) try diag.add(allocator, diagnostics, "invalid_identifier", "exports.input", "invalid export input {s}", .{entry.key_ptr.*});
-        if (!schema.validate(entry.value_ptr)) try diag.add(allocator, diagnostics, "invalid_schema", "exports.input", "invalid export input schema", .{});
+        const schema_path = try std.fmt.allocPrint(allocator, "exports.input.{s}", .{entry.key_ptr.*});
+        defer allocator.free(schema_path);
+        try schema.validateWithDiagnostics(allocator, diagnostics, entry.value_ptr, schema_path);
     }
 }
 

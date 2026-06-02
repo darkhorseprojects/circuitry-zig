@@ -1,0 +1,13 @@
+circuitry: "0.5"
+resources:
+  assistant:
+    model:
+      schema:
+        score:
+          type: number
+          minimum: 0
+        status:
+          enum: success
+        slug:
+          type: string
+          pattern: "["
