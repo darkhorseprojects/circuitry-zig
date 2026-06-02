@@ -1,0 +1,9 @@
+circuitry: "0.5"
+title: Minimal
+
+exports:
+  main: message
+
+resources:
+  message:
+    text: Hello from Circuitry.

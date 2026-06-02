@@ -1,0 +1,19 @@
+circuitry: "0.5"
+imports:
+  shared: ./shared.circuitry.yaml
+exports:
+  main: runner
+resources:
+  shared:
+    text: conflicts with import alias
+  bad_file:
+    file:
+      path: 42
+  runner:
+    run:
+      graph: ./shared.circuitry.yaml
+      export: [main]
+      input:
+        bad.name: bad_file
+      schema:
+        bad.field: string

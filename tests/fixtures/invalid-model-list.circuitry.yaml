@@ -1,0 +1,10 @@
+circuitry: "0.5"
+exports:
+  main: assistant
+resources:
+  ok:
+    text: ok
+  assistant:
+    model:
+      input: [ok, [1]]
+      tools: [read]

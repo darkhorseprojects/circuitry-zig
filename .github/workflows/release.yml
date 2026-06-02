@@ -1,0 +1,49 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: x86_64-linux-gnu
+            archive: circuitry-zig-linux-x86_64.tar.gz
+            binary: circuitry-zig
+          - target: x86_64-macos
+            archive: circuitry-zig-macos-x86_64.tar.gz
+            binary: circuitry-zig
+          - target: aarch64-macos
+            archive: circuitry-zig-macos-aarch64.tar.gz
+            binary: circuitry-zig
+          - target: x86_64-windows
+            archive: circuitry-zig-windows-x86_64.zip
+            binary: circuitry-zig.exe
+    steps:
+      - uses: actions/checkout@v4
+      - uses: mlugg/setup-zig@v2
+        with:
+          version: 0.16.0
+      - run: zig build test
+      - run: zig build -Doptimize=ReleaseFast -Dtarget=${{ matrix.target }}
+      - name: Package archive
+        run: |
+          if [[ "${{ matrix.archive }}" == *.zip ]]; then
+            (cd zig-out/bin && zip "../../${{ matrix.archive }}" "${{ matrix.binary }}")
+          else
+            tar -czf "${{ matrix.archive }}" -C zig-out/bin "${{ matrix.binary }}"
+          fi
+          sha256sum "${{ matrix.archive }}" > "${{ matrix.archive }}.sha256"
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            ${{ matrix.archive }}
+            ${{ matrix.archive }}.sha256

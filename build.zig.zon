@@ -1,0 +1,20 @@
+.{
+    .name = .circuitry,
+    .version = "0.1.0",
+    .fingerprint = 0xa9e06bff0dfff5a6,
+    .minimum_zig_version = "0.16.0",
+    .dependencies = .{
+        .serde = .{
+            .url = "git+https://github.com/OrlovEvgeny/serde.zig#875e1b680b02bfbc2f146ea3d3f91d724f86c500",
+            .hash = "serde-1.0.1-1DszT_hrDQAURHcyOhR7wEKwqbF8FYl8vN26pKLLCkWn",
+        },
+    },
+    .paths = .{
+        "build.zig",
+        "build.zig.zon",
+        "src",
+        "tests",
+        "README.md",
+        "LICENSE",
+    },
+}

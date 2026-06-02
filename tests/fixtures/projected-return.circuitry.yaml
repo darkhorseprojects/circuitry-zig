@@ -1,0 +1,18 @@
+circuitry: "0.5"
+title: Projected return
+
+exports:
+  main:
+    run: assistant
+    input:
+      question: string
+    returns:
+      answer: assistant.answer
+
+resources:
+  assistant:
+    model:
+      input:
+        - $question
+      schema:
+        answer: string

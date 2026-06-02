@@ -1,0 +1,5 @@
+circuitry: "0.5"
+entry: message
+resources:
+  message:
+    text: hello
