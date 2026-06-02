@@ -56,7 +56,11 @@ fn appendJsonLike(allocator: std.mem.Allocator, out: *std.ArrayList(u8), value: 
         .boolean => |b| try out.appendSlice(allocator, if (b) "true" else "false"),
         .integer => |i| try out.print(allocator, "{d}", .{i}),
         .float => |f| try out.print(allocator, "{d}", .{f}),
-        .string => |s| try out.print(allocator, "\"{s}\"", .{s}),
+        .string => |s| {
+            var aw = std.Io.Writer.Allocating.fromArrayList(allocator, out);
+            defer out.* = aw.toArrayList();
+            try std.json.Stringify.value(s, .{}, &aw.writer);
+        },
         .sequence => |items| {
             try out.appendSlice(allocator, "[");
             for (items, 0..) |*item, i| {

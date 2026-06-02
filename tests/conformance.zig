@@ -59,3 +59,29 @@ test "resolve rejects missing imported resources" {
     const graph = try circuitry.loadFile(std.testing.allocator, std.testing.io, "tests/fixtures/import-missing-resource.circuitry.yaml");
     try std.testing.expectError(error.UnknownModuleResource, circuitry.resolve(std.testing.allocator, std.testing.io, graph, .{}));
 }
+
+test "resolved plan includes module-qualified dependencies" {
+    const graph = try circuitry.loadFile(std.testing.allocator, std.testing.io, "tests/fixtures/imported-plan.circuitry.yaml");
+    var resolved = try circuitry.resolve(std.testing.allocator, std.testing.io, graph, .{});
+    defer resolved.deinit();
+    const steps = try circuitry.plan.planResolvedExport(std.testing.allocator, &resolved, "main");
+    defer circuitry.plan.freeResolvedPlan(std.testing.allocator, steps);
+    try std.testing.expectEqual(@as(usize, 2), steps.len);
+    try std.testing.expectEqualStrings("shared", steps[0].module.?);
+    try std.testing.expectEqualStrings("shared_text", steps[0].id);
+    try std.testing.expectEqualStrings("assistant", steps[1].id);
+    try std.testing.expectEqualStrings("shared.shared_text", steps[1].dependencies[0]);
+}
+
+test "query resolves module address and resource metadata is ignored" {
+    var graph = try circuitry.loadFile(std.testing.allocator, std.testing.io, "tests/fixtures/metadata-resource.circuitry.yaml");
+    defer graph.deinit();
+    const assistant = circuitry.graph.resource(&graph, "assistant") orelse return error.TestExpectedResource;
+    try std.testing.expectEqualStrings("model", circuitry.resource.kindName(assistant).?);
+
+    const imported = try circuitry.loadFile(std.testing.allocator, std.testing.io, "tests/fixtures/imports.circuitry.yaml");
+    var resolved = try circuitry.resolve(std.testing.allocator, std.testing.io, imported, .{});
+    defer resolved.deinit();
+    const found = try circuitry.query.parseAndResolve(std.testing.allocator, &resolved, "shared.shared_text");
+    try std.testing.expectEqualStrings("shared_text", found.resource_id);
+}

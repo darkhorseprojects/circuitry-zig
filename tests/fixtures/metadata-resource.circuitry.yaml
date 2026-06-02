@@ -1,0 +1,11 @@
+circuitry: "0.5"
+exports:
+  main: assistant
+resources:
+  assistant:
+    label: Polite assistant
+    description: Metadata should not count as resource kind.
+    model:
+      input: [$user_turn]
+      schema:
+        answer: string
