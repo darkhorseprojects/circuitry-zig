@@ -42,8 +42,22 @@ jobs:
             tar -czf "${{ matrix.archive }}" -C zig-out/bin "${{ matrix.binary }}"
           fi
           sha256sum "${{ matrix.archive }}" > "${{ matrix.archive }}.sha256"
-      - uses: softprops/action-gh-release@v2
+      - uses: actions/upload-artifact@v4
         with:
-          files: |
+          name: ${{ matrix.archive }}
+          path: |
             ${{ matrix.archive }}
             ${{ matrix.archive }}.sha256
+          if-no-files-found: error
+
+  release:
+    runs-on: ubuntu-latest
+    needs: build
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*
