@@ -2,6 +2,7 @@ const std = @import("std");
 const addr = @import("address.zig");
 const diag = @import("diagnostic.zig");
 const val = @import("value.zig");
+const Regex = @import("regex").Regex;
 
 const scalar_names = [_][]const u8{ "string", "number", "integer", "boolean", "null", "any" };
 const reserved_keys = [_][]const u8{ "object", "extra", "optional", "nullable", "array", "list", "record", "key", "union", "literal", "enum", "range", "length", "pattern", "type", "annotations" };
@@ -21,8 +22,8 @@ pub fn validateWithDiagnostics(allocator: std.mem.Allocator, diagnostics: *diag.
     try validateNode(allocator, diagnostics, schema, path);
 }
 
-pub fn validateValue(schema: *const val.Value, value: *const val.Value) bool {
-    return validateValueNode(schema, value, false);
+pub fn validateValue(allocator: std.mem.Allocator, schema: *const val.Value, value: *const val.Value) !bool {
+    return validateValueNode(allocator, schema, value, false);
 }
 
 fn validateNode(allocator: std.mem.Allocator, diagnostics: *diag.List, schema: *const val.Value, path: []const u8) anyerror!void {
@@ -133,7 +134,7 @@ fn validateRecord(allocator: std.mem.Allocator, diagnostics: *diag.List, schema:
             const pattern = val.objectGet(key_spec, "pattern").?;
             const pattern_path = try joinPath(allocator, key_path, "pattern");
             defer allocator.free(pattern_path);
-            if (pattern.* != .string) try diag.add(allocator, diagnostics, "invalid_schema", pattern_path, "{s} must be a string", .{pattern_path}) else if (!validPattern(pattern.string)) try diag.add(allocator, diagnostics, "invalid_schema", pattern_path, "{s} is invalid", .{pattern_path});
+            if (pattern.* != .string) try diag.add(allocator, diagnostics, "invalid_schema", pattern_path, "{s} must be a string", .{pattern_path}) else if (!try validPattern(allocator, pattern.string)) try diag.add(allocator, diagnostics, "invalid_schema", pattern_path, "{s} is invalid", .{pattern_path});
         }
     }
     if (val.objectGet(schema, "length")) |length| {
@@ -159,7 +160,7 @@ fn validateTyped(allocator: std.mem.Allocator, diagnostics: *diag.List, schema: 
     if (val.objectGet(schema, "pattern")) |pattern| {
         const pattern_path = try joinPath(allocator, path, "pattern");
         defer allocator.free(pattern_path);
-        if (pattern.* != .string) try diag.add(allocator, diagnostics, "invalid_schema", pattern_path, "{s} must be a string", .{pattern_path}) else if (!validPattern(pattern.string)) try diag.add(allocator, diagnostics, "invalid_schema", pattern_path, "{s} is invalid", .{pattern_path});
+        if (pattern.* != .string) try diag.add(allocator, diagnostics, "invalid_schema", pattern_path, "{s} must be a string", .{pattern_path}) else if (!try validPattern(allocator, pattern.string)) try diag.add(allocator, diagnostics, "invalid_schema", pattern_path, "{s} is invalid", .{pattern_path});
     }
 }
 
@@ -245,13 +246,13 @@ fn requireOnly(allocator: std.mem.Allocator, diagnostics: *diag.List, schema: *c
     };
 }
 
-fn validateValueNode(schema: *const val.Value, value: ?*const val.Value, absent: bool) bool {
+fn validateValueNode(allocator: std.mem.Allocator, schema: *const val.Value, value: ?*const val.Value, absent: bool) anyerror!bool {
     if (schema.* == .string) return !absent and validateScalar(schema.string, value.?);
     if (schema.* != .mapping) return false;
     const map = &schema.mapping;
 
-    if (hasMap(map, "optional") and semanticCount(map) == 1) return absent or validateValueNode(val.objectGet(schema, "optional").?, value, false);
-    if (hasMap(map, "nullable") and semanticCount(map) == 1) return !absent and (value.?.* == .null_val or validateValueNode(val.objectGet(schema, "nullable").?, value, false));
+    if (hasMap(map, "optional") and semanticCount(map) == 1) return absent or try validateValueNode(allocator, val.objectGet(schema, "optional").?, value, false);
+    if (hasMap(map, "nullable") and semanticCount(map) == 1) return !absent and (value.?.* == .null_val or try validateValueNode(allocator, val.objectGet(schema, "nullable").?, value, false));
     if (hasMap(map, "literal") and semanticCount(map) == 1) return !absent and scalarEqual(value.?, val.objectGet(schema, "literal").?);
     if (hasMap(map, "enum") and semanticCount(map) == 1) {
         if (absent) return false;
@@ -260,14 +261,14 @@ fn validateValueNode(schema: *const val.Value, value: ?*const val.Value, absent:
         for (items.sequence) |*item| if (scalarEqual(value.?, item)) return true;
         return false;
     }
-    if (hasMap(map, "union") and semanticCount(map) == 1) return !absent and validateUnionValue(val.objectGet(schema, "union").?, value.?);
+    if (hasMap(map, "union") and semanticCount(map) == 1) return !absent and try validateUnionValue(allocator, val.objectGet(schema, "union").?, value.?);
 
-    if (ordinaryCount(map) > 0) return validateObjectValue(schema, value, absent);
+    if (ordinaryCount(map) > 0) return validateObjectValue(allocator, schema, value, absent);
     if ((hasMap(map, "array") or hasMap(map, "list")) and !(hasMap(map, "array") and hasMap(map, "list"))) {
         if (absent or value.?.* != .sequence) return false;
         const child = val.objectGet(schema, if (hasMap(map, "array")) "array" else "list").?;
         if (!checkLength(val.objectGet(schema, "length"), value.?.sequence.len)) return false;
-        for (value.?.sequence) |*item| if (!validateValueNode(child, item, false)) return false;
+        for (value.?.sequence) |*item| if (!try validateValueNode(allocator, child, item, false)) return false;
         return true;
     }
     if (hasMap(map, "record")) {
@@ -276,8 +277,8 @@ fn validateValueNode(schema: *const val.Value, value: ?*const val.Value, absent:
         if (!checkLength(val.objectGet(schema, "length"), value.?.mapping.count())) return false;
         var it = value.?.mapping.iterator();
         while (it.next()) |entry| {
-            if (val.objectGet(schema, "key")) |key_spec| if (val.objectGet(key_spec, "pattern")) |pattern| if (pattern.* == .string and !matchPattern(pattern.string, entry.key_ptr.*)) return false;
-            if (!validateValueNode(child, entry.value_ptr, false)) return false;
+            if (val.objectGet(schema, "key")) |key_spec| if (val.objectGet(key_spec, "pattern")) |pattern| if (pattern.* == .string and !try matchesPattern(allocator, pattern.string, entry.key_ptr.*)) return false;
+            if (!try validateValueNode(allocator, child, entry.value_ptr, false)) return false;
         }
         return true;
     }
@@ -286,15 +287,20 @@ fn validateValueNode(schema: *const val.Value, value: ?*const val.Value, absent:
         const t = val.objectGet(schema, "type") orelse return false;
         if (t.* != .string or !validateScalar(t.string, value.?)) return false;
         if (!checkRange(val.objectGet(schema, "range"), value.?)) return false;
-        if (val.objectGet(schema, "pattern")) |pattern| if (pattern.* != .string or value.?.* != .string or !matchPattern(pattern.string, value.?.string)) return false;
-        const length_value: ?usize = switch (value.?.*) { .string => |s| s.len, .sequence => |items| items.len, .mapping => |m| m.count(), else => null };
+        if (val.objectGet(schema, "pattern")) |pattern| if (pattern.* != .string or value.?.* != .string or !try matchesPattern(allocator, pattern.string, value.?.string)) return false;
+        const length_value: ?usize = switch (value.?.*) {
+            .string => |s| s.len,
+            .sequence => |items| items.len,
+            .mapping => |m| m.count(),
+            else => null,
+        };
         if (!checkLength(val.objectGet(schema, "length"), length_value)) return false;
         return true;
     }
-    return validateObjectValue(schema, value, absent);
+    return validateObjectValue(allocator, schema, value, absent);
 }
 
-fn validateObjectValue(schema: *const val.Value, value: ?*const val.Value, absent: bool) bool {
+fn validateObjectValue(allocator: std.mem.Allocator, schema: *const val.Value, value: ?*const val.Value, absent: bool) anyerror!bool {
     if (absent or value.?.* != .mapping) return false;
     const fields = val.objectGet(schema, "object") orelse schema;
     if (fields.* != .mapping) return false;
@@ -302,7 +308,7 @@ fn validateObjectValue(schema: *const val.Value, value: ?*const val.Value, absen
     while (it.next()) |entry| {
         if (std.mem.eql(u8, entry.key_ptr.*, "annotations")) continue;
         const child = val.objectGet(value.?, entry.key_ptr.*);
-        if (!validateValueNode(entry.value_ptr, child, child == null)) return false;
+        if (!try validateValueNode(allocator, entry.value_ptr, child, child == null)) return false;
     }
     const extra = if (val.objectGet(schema, "extra")) |e| e.* == .boolean and e.boolean else false;
     if (!extra) {
@@ -312,9 +318,9 @@ fn validateObjectValue(schema: *const val.Value, value: ?*const val.Value, absen
     return true;
 }
 
-fn validateUnionValue(union_value: *const val.Value, value: *const val.Value) bool {
+fn validateUnionValue(allocator: std.mem.Allocator, union_value: *const val.Value, value: *const val.Value) anyerror!bool {
     if (union_value.* == .sequence) {
-        for (union_value.sequence) |*branch| if (validateValueNode(branch, value, false)) return true;
+        for (union_value.sequence) |*branch| if (try validateValueNode(allocator, branch, value, false)) return true;
         return false;
     }
     if (union_value.* != .mapping or value.* != .mapping) return false;
@@ -324,7 +330,7 @@ fn validateUnionValue(union_value: *const val.Value, value: *const val.Value) bo
     const tag_value = val.objectGet(value, tag.string) orelse return false;
     if (tag_value.* != .string) return false;
     const variant = val.objectGet(variants, tag_value.string) orelse return false;
-    return validateValueNode(variant, value, false);
+    return validateValueNode(allocator, variant, value, false);
 }
 
 fn validateScalar(name: []const u8, value: *const val.Value) bool {
@@ -358,15 +364,24 @@ fn checkLength(length: ?*const val.Value, actual: ?usize) bool {
 }
 
 fn numberValue(value: *const val.Value) ?f64 {
-    return switch (value.*) { .integer => |i| @floatFromInt(i), .float => |f| f, else => null };
+    return switch (value.*) {
+        .integer => |i| @floatFromInt(i),
+        .float => |f| f,
+        else => null,
+    };
 }
 
 fn integerValue(value: *const val.Value) ?i64 {
-    return switch (value.*) { .integer => |i| i, else => null };
+    return switch (value.*) {
+        .integer => |i| i,
+        else => null,
+    };
 }
 
 fn undefinedValue() *const val.Value {
-    const static = struct { const v = val.Value{ .null_val = {} }; };
+    const static = struct {
+        const v = val.Value{ .null_val = {} };
+    };
     return &static.v;
 }
 
@@ -381,12 +396,25 @@ fn scalarEqual(a: *const val.Value, b: *const val.Value) bool {
     };
 }
 
-fn isScalar(s: []const u8) bool { return oneOf(s, &scalar_names); }
-fn isReserved(s: []const u8) bool { return oneOf(s, &reserved_keys); }
-fn isForbidden(s: []const u8) bool { return oneOf(s, &forbidden_operators); }
-fn oneOf(s: []const u8, items: []const []const u8) bool { for (items) |item| if (std.mem.eql(u8, s, item)) return true; return false; }
-fn hasMap(map: *const val.Mapping, key: []const u8) bool { return map.getPtr(key) != null; }
-fn hasValue(value: *const val.Value, key: []const u8) bool { return val.objectGet(value, key) != null; }
+fn isScalar(s: []const u8) bool {
+    return oneOf(s, &scalar_names);
+}
+fn isReserved(s: []const u8) bool {
+    return oneOf(s, &reserved_keys);
+}
+fn isForbidden(s: []const u8) bool {
+    return oneOf(s, &forbidden_operators);
+}
+fn oneOf(s: []const u8, items: []const []const u8) bool {
+    for (items) |item| if (std.mem.eql(u8, s, item)) return true;
+    return false;
+}
+fn hasMap(map: *const val.Mapping, key: []const u8) bool {
+    return map.getPtr(key) != null;
+}
+fn hasValue(value: *const val.Value, key: []const u8) bool {
+    return val.objectGet(value, key) != null;
+}
 fn semanticCount(map: *const val.Mapping) usize {
     var n: usize = 0;
     var it = map.iterator();
@@ -403,9 +431,16 @@ fn ordinaryCount(map: *const val.Mapping) usize {
     }
     return n;
 }
-fn isScalarLiteral(value: *const val.Value) bool { return switch (value.*) { .null_val, .boolean, .integer, .float, .string => true, else => false }; }
+fn isScalarLiteral(value: *const val.Value) bool {
+    return switch (value.*) {
+        .null_val, .boolean, .integer, .float, .string => true,
+        else => false,
+    };
+}
 
-fn joinPath(allocator: std.mem.Allocator, path: []const u8, key: []const u8) ![]u8 { return std.fmt.allocPrint(allocator, "{s}.{s}", .{ path, key }); }
+fn joinPath(allocator: std.mem.Allocator, path: []const u8, key: []const u8) ![]u8 {
+    return std.fmt.allocPrint(allocator, "{s}.{s}", .{ path, key });
+}
 fn addPath(allocator: std.mem.Allocator, diagnostics: *diag.List, path: []const u8, key: []const u8, code: []const u8, comptime fmt: []const u8, args: anytype) !void {
     _ = args;
     const child_path = try joinPath(allocator, path, key);
@@ -413,58 +448,21 @@ fn addPath(allocator: std.mem.Allocator, diagnostics: *diag.List, path: []const 
     try diag.add(allocator, diagnostics, code, child_path, fmt, .{child_path});
 }
 
-fn validPattern(pattern: []const u8) bool {
-    var i: usize = 0;
-    var bracket = false;
-    var paren_depth: usize = 0;
-    while (i < pattern.len) : (i += 1) switch (pattern[i]) {
-        '\\' => i += 1,
-        '[' => {
-            if (bracket) return false;
-            bracket = true;
-        },
-        ']' => {
-            if (!bracket) return false;
-            bracket = false;
-        },
-        '(' => {
-            if (!bracket) paren_depth += 1;
-        },
-        ')' => {
-            if (!bracket) {
-                if (paren_depth == 0) return false;
-                paren_depth -= 1;
-            }
-        },
-        else => {},
-    };
-    return !bracket and paren_depth == 0;
+pub fn validPattern(allocator: std.mem.Allocator, pattern: []const u8) !bool {
+    if (std.mem.indexOf(u8, pattern, "(?") != null) return false;
+    if (std.mem.indexOf(u8, pattern, "\\p") != null or std.mem.indexOf(u8, pattern, "\\P") != null) return false;
+    var compiled = Regex.compile(allocator, pattern) catch return false;
+    compiled.deinit();
+    return true;
 }
 
-fn matchPattern(pattern: []const u8, text: []const u8) bool {
-    if (!validPattern(pattern)) return false;
-    if (pattern.len >= 4 and pattern[0] == '^' and pattern[1] == '[') {
-        const close = std.mem.indexOfScalarPos(u8, pattern, 2, ']') orelse return false;
-        const class = pattern[2..close];
-        const quant = if (close + 1 < pattern.len) pattern[close + 1] else 0;
-        const anchored_end = pattern[pattern.len - 1] == '$';
-        if (!anchored_end) return false;
-        const min: usize = if (quant == '+') 1 else 0;
-        if (text.len < min) return false;
-        for (text) |c| if (!classContains(class, c)) return false;
+pub fn matchesPattern(allocator: std.mem.Allocator, pattern: []const u8, text: []const u8) !bool {
+    var compiled = Regex.compile(allocator, pattern) catch return false;
+    defer compiled.deinit();
+    if (try compiled.find(text)) |match| {
+        var owned_match = match;
+        defer owned_match.deinit(allocator);
         return true;
-    }
-    if (pattern.len >= 2 and pattern[0] == '^' and pattern[pattern.len - 1] == '$') return std.mem.eql(u8, pattern[1 .. pattern.len - 1], text);
-    return std.mem.indexOf(u8, text, pattern) != null;
-}
-
-fn classContains(class: []const u8, c: u8) bool {
-    var i: usize = 0;
-    while (i < class.len) : (i += 1) {
-        if (i + 2 < class.len and class[i + 1] == '-') {
-            if (c >= class[i] and c <= class[i + 2]) return true;
-            i += 2;
-        } else if (class[i] == c) return true;
     }
     return false;
 }

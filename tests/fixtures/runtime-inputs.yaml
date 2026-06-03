@@ -1,0 +1,6 @@
+question: hello
+count: 2
+debug: true
+tags: [a, b]
+meta:
+  level: 1

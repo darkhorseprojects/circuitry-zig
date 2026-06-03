@@ -78,16 +78,17 @@ test "deterministic schema fixture validates and custom payload is queryable" {
     defer graph.deinit();
     try circuitry.validate(std.testing.allocator, &graph);
 
-    try std.testing.expectEqualStrings("extension", circuitry.query.resourceKind(&graph, "example_extension").?);
-    const payload = circuitry.query.customResourcePayload(&graph, "example_extension", "extension") orelse return error.TestExpectedResource;
+    try std.testing.expectEqualStrings("extension", circuitry.query.resourceKind(&graph, "hello_extension").?);
+    const payload = circuitry.query.customResourcePayload(&graph, "hello_extension", "extension") orelse return error.TestExpectedResource;
     const package = circuitry.value.objectGet(payload, "package") orelse return error.TestExpectedResource;
-    try std.testing.expectEqualStrings("@zinc/example", package.string);
+    try std.testing.expectEqualStrings("hello", package.string);
+    try std.testing.expectEqual(.list, circuitry.query.fieldShape(circuitry.value.objectGet(payload, "tools") orelse return error.TestExpectedResource));
 
     const schema = circuitry.query.modelSchema(&graph, "assistant") orelse return error.TestExpectedResource;
     try std.testing.expect(circuitry.schema.validate(schema));
     const sample_body = circuitry.query.resourceBody(&graph, "sample_answer") orelse return error.TestExpectedResource;
     const sample_value = circuitry.value.objectGet(sample_body, "value") orelse return error.TestExpectedResource;
-    try std.testing.expect(circuitry.schema.validateValue(schema, sample_value));
+    try std.testing.expect(try circuitry.schema.validateValue(std.testing.allocator, schema, sample_value));
 }
 
 // Covers unknown operators, enum shape, and invalid pattern diagnostics.
@@ -114,7 +115,49 @@ test "deterministic schema fixture rejects invalid operators" {
     try std.testing.expect(saw_pattern);
 }
 
- test "query resolves module address and resource metadata is ignored" {
+test "module-qualified export planning and runtime inputs are resolved" {
+    const graph = try circuitry.loadFile(std.testing.allocator, std.testing.io, "tests/fixtures/module-export.circuitry.yaml");
+    var resolved = try circuitry.resolve(std.testing.allocator, std.testing.io, graph, .{});
+    defer resolved.deinit();
+
+    const steps = try circuitry.planExport(std.testing.allocator, &resolved, "main");
+    defer circuitry.plan.freeResolvedPlan(std.testing.allocator, steps);
+    try std.testing.expectEqual(@as(usize, 2), steps.len);
+    try std.testing.expectEqualStrings("shared", steps[0].module.?);
+    try std.testing.expectEqualStrings("shared_text", steps[0].id);
+    try std.testing.expectEqualStrings("shared", steps[1].module.?);
+    try std.testing.expectEqualStrings("assistant", steps[1].id);
+
+    const inputs = try circuitry.requiredInputs(std.testing.allocator, &resolved, "main");
+    defer circuitry.validation.freeStrings(std.testing.allocator, inputs);
+    try std.testing.expectEqual(@as(usize, 1), inputs.len);
+    try std.testing.expectEqualStrings("question", inputs[0]);
+
+    var values = try circuitry.loadYamlFile(std.testing.allocator, std.testing.io, "tests/fixtures/runtime-inputs.yaml");
+    defer values.deinit();
+    try circuitry.validateRuntimeInputs(std.testing.allocator, &resolved, "main", &values.root);
+}
+
+test "shared pattern fixtures match zig-regex contract" {
+    var fixtures = try circuitry.loadYamlFile(std.testing.allocator, std.testing.io, "tests/fixtures/patterns.yaml");
+    defer fixtures.deinit();
+    const valid = circuitry.value.objectGet(&fixtures.root, "valid") orelse return error.TestExpectedResource;
+    for (valid.sequence) |*fixture| {
+        const pattern = (circuitry.value.objectGet(fixture, "pattern") orelse return error.TestExpectedResource).string;
+        try std.testing.expect(try circuitry.schema.validPattern(std.testing.allocator, pattern));
+        const accept = circuitry.value.objectGet(fixture, "accept") orelse return error.TestExpectedResource;
+        for (accept.sequence) |*item| try std.testing.expect(try circuitry.schema.matchesPattern(std.testing.allocator, pattern, item.string));
+        const reject = circuitry.value.objectGet(fixture, "reject") orelse return error.TestExpectedResource;
+        for (reject.sequence) |*item| try std.testing.expect(!try circuitry.schema.matchesPattern(std.testing.allocator, pattern, item.string));
+    }
+    const invalid = circuitry.value.objectGet(&fixtures.root, "invalid") orelse return error.TestExpectedResource;
+    for (invalid.sequence) |*fixture| {
+        const pattern = (circuitry.value.objectGet(fixture, "pattern") orelse return error.TestExpectedResource).string;
+        try std.testing.expect(!try circuitry.schema.validPattern(std.testing.allocator, pattern));
+    }
+}
+
+test "query resolves module address and resource metadata is ignored" {
     var graph = try circuitry.loadFile(std.testing.allocator, std.testing.io, "tests/fixtures/metadata-resource.circuitry.yaml");
     defer graph.deinit();
     const assistant = circuitry.graph.resource(&graph, "assistant") orelse return error.TestExpectedResource;

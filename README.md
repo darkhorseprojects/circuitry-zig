@@ -22,7 +22,7 @@ Circuitry is a small YAML format for executable AI graphs. It exists so prompts,
 
 Runtimes provide effects: provider calls, tool implementations, URI materialization, sessions, packages, permissions, memory, policy, and services.
 
-- package version: `0.1.3`
+- package version: `0.1.4`
 - graph format version: `0.5`
 - target Zig: `0.16.0`
 - YAML foundation: [`OrlovEvgeny/serde.zig`](https://github.com/OrlovEvgeny/serde.zig)
@@ -43,7 +43,7 @@ Supported schema features match the TypeScript Circuitry implementation:
 - expanded object form: `object` + `extra`
 - `optional`
 - `nullable`
-- `array` and compatibility alias `list`
+- `array` and `list`
 - `record` with optional key `pattern`
 - `union` and tagged union
 - `literal`
@@ -56,7 +56,7 @@ Supported schema features match the TypeScript Circuitry implementation:
 
 Unknown schema operators are errors except under `annotations`. Unknown YAML outside schema is preserved.
 
-Pattern support covers the portable subset used by Circuitry schemas: anchors, literal text, bracket character classes/ranges, and `*`, `+`, `?` quantifiers.
+Pattern support uses `zig-utils/zig-regex` with the portable Circuitry contract: anchors, literals, character classes, ranges, negated classes, `*`, `+`, `?`, `{n}`, `{m,n}`, alternation, groups, `.`, and escaped classes such as `\\d`, `\\w`, and `\\s`.
 
 ## API sketch
 
@@ -75,8 +75,8 @@ var resolved = try circuitry.resolve(allocator, io, graph, .{});
 defer resolved.deinit();
 
 const main_export = circuitry.getExport(&resolved.graph, "main");
-const inputs = try circuitry.requiredInputs(allocator, &resolved.graph, "main");
-const plan = try circuitry.planExport(allocator, &resolved.graph, "main");
+const inputs = try circuitry.requiredInputs(allocator, &resolved, "main");
+const plan = try circuitry.planExport(allocator, &resolved, "main");
 const returns = try circuitry.returnProjections(allocator, &resolved.graph, "main");
 ```
 

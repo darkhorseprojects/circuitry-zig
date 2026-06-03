@@ -1,0 +1,81 @@
+# Shared Circuitry pattern contract fixtures.
+# This file is consumed by TypeScript tests and copied/consumed by circuitry-zig tests.
+# Pattern semantics intentionally follow the supported zig-utils/zig-regex subset used by Circuitry.
+valid:
+  - name: anchors
+    pattern: "^hello$"
+    accept: [hello]
+    reject: [" hello", "hello ", shello]
+  - name: literals
+    pattern: "cat"
+    accept: [cat, bobcat]
+    reject: [dog]
+  - name: character_classes
+    pattern: "^[abc]+$"
+    accept: [a, cab]
+    reject: [d, abcd]
+  - name: ranges
+    pattern: "^[a-c0-2]+$"
+    accept: [abc012, c2a]
+    reject: [d, "3"]
+  - name: negated_classes
+    pattern: "^[^0-9]+$"
+    accept: [abc, "_-x"]
+    reject: [abc1, "9"]
+  - name: quantifier_star
+    pattern: "^ab*$"
+    accept: [a, ab, abbb]
+    reject: [ac]
+  - name: quantifier_plus
+    pattern: "^ab+$"
+    accept: [ab, abbb]
+    reject: [a, ac]
+  - name: quantifier_optional
+    pattern: "^colou?r$"
+    accept: [color, colour]
+    reject: [colouur]
+  - name: quantifier_exact
+    pattern: "^a{3}$"
+    accept: [aaa]
+    reject: [aa, aaaa]
+  - name: quantifier_range
+    pattern: "^a{2,4}$"
+    accept: [aa, aaa, aaaa]
+    reject: [a, aaaaa]
+  - name: alternation
+    pattern: "^(cat|dog)$"
+    accept: [cat, dog]
+    reject: [bird, catdog]
+  - name: groups
+    pattern: "^(ab)+$"
+    accept: [ab, abab]
+    reject: [aba]
+  - name: dot_wildcard
+    pattern: "^a.c$"
+    accept: [abc, axc]
+    reject: [ac, abdc]
+  - name: escaped_digit_class
+    pattern: "^\\d+$"
+    accept: ["123", "0"]
+    reject: [abc, "12a"]
+  - name: escaped_word_class
+    pattern: "^\\w+$"
+    accept: [abc_123]
+    reject: ["has space", "dash-name"]
+  - name: escaped_space_class
+    pattern: "^a\\sb$"
+    accept: ["a b", "a\tb"]
+    reject: [ab, "a-b"]
+invalid:
+  - name: unclosed_class
+    pattern: "[abc"
+  - name: unclosed_group
+    pattern: "(abc"
+  - name: reversed_repeat
+    pattern: "a{4,2}"
+  - name: unsupported_lookahead
+    pattern: "a(?=b)"
+  - name: unsupported_named_group
+    pattern: "(?<name>a)"
+  - name: unsupported_unicode_property
+    pattern: "\\p{L}+"

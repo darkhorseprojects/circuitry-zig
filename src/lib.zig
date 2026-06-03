@@ -17,7 +17,7 @@ pub const inspect = @import("inspect.zig");
 
 pub const Graph = graph.Graph;
 pub const ResolvedGraph = resolver.ResolvedGraph;
-pub const DependencyPlan = []plan.Step;
+pub const DependencyPlan = []plan.ResolvedStep;
 pub const ReturnProjection = exports.Projection;
 pub const Diagnostic = diagnostic.Diagnostic;
 pub const ValidationError = validation.ValidationError;
@@ -28,8 +28,9 @@ pub const loadFile = graph.loadFile;
 pub const validate = validation.validate;
 pub const collectDiagnostics = validation.collect;
 pub const resolve = resolver.resolve;
-pub const requiredInputs = plan.requiredInputs;
-pub const planExport = plan.planExport;
+pub const requiredInputs = plan.resolvedRequiredInputs;
+pub const planExport = plan.planResolvedExport;
+pub const validateRuntimeInputs = plan.validateResolvedRuntimeInputs;
 
 pub fn getExport(g: *const Graph, name: []const u8) ?exports.ExportSpec {
     const e = g.exports() orelse return null;

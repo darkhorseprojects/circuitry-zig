@@ -6,7 +6,7 @@ const diag = @import("diagnostic.zig");
 const schema = @import("schema.zig");
 const val = @import("value.zig");
 
-pub const ValidationError = error{ InvalidCircuitryGraph };
+pub const ValidationError = error{InvalidCircuitryGraph};
 
 pub fn validate(allocator: std.mem.Allocator, graph: *const graph_mod.Graph) !void {
     var diagnostics: diag.List = .empty;
@@ -193,7 +193,7 @@ fn validateExportInput(allocator: std.mem.Allocator, diagnostics: *diag.List, in
 fn validateRuntimeInputsForExport(allocator: std.mem.Allocator, graph: *const graph_mod.Graph, diagnostics: *diag.List, export_name: []const u8) !void {
     const exports = graph.exports() orelse return;
     const spec = @import("export.zig").get(exports, export_name) orelse return;
-    const ids = @import("plan.zig").runSet(allocator, graph, export_name) catch return;
+    const ids = localRunSet(allocator, graph, export_name) catch return;
     defer freeStrings(allocator, ids);
     var used: std.ArrayList([]u8) = .empty;
     defer freeStringList(allocator, &used);
@@ -207,6 +207,36 @@ fn validateRuntimeInputsForExport(allocator: std.mem.Allocator, graph: *const gr
 fn exportInputDeclares(input: ?*const val.Value, name: []const u8) bool {
     const map = input orelse return false;
     return val.objectGet(map, name) != null;
+}
+
+fn localRunSet(allocator: std.mem.Allocator, graph: *const graph_mod.Graph, export_name: []const u8) ![][]u8 {
+    const exports = graph.exports() orelse return allocator.alloc([]u8, 0);
+    const spec = @import("export.zig").get(exports, export_name) orelse return error.ExportNotFound;
+    const aliases = try importAliases(allocator, graph);
+    defer freeStrings(allocator, aliases);
+    var target = try addr.parse(allocator, spec.run, aliases);
+    defer target.deinit(allocator);
+    if (target.module != null) return allocator.alloc([]u8, 0);
+    var seen = std.StringHashMap(bool).init(allocator);
+    defer seen.deinit();
+    var out = std.ArrayList([]u8).empty;
+    errdefer freeStringList(allocator, &out);
+    try localVisit(allocator, graph, aliases, &seen, &out, target.resource);
+    return out.toOwnedSlice(allocator);
+}
+
+fn localVisit(allocator: std.mem.Allocator, graph: *const graph_mod.Graph, aliases: []const []const u8, seen: *std.StringHashMap(bool), out: *std.ArrayList([]u8), id: []const u8) !void {
+    if (seen.contains(id)) return;
+    try seen.put(id, true);
+    try out.append(allocator, try allocator.dupe(u8, id));
+    const rv = graph_mod.resource(graph, id) orelse return;
+    const deps = try res.dependencies(allocator, rv);
+    defer freeStrings(allocator, deps);
+    for (deps) |dep| {
+        var parsed = addr.parse(allocator, dep, aliases) catch continue;
+        defer parsed.deinit(allocator);
+        if (parsed.module == null) try localVisit(allocator, graph, aliases, seen, out, parsed.resource);
+    }
 }
 
 fn validateAddressOrRuntimeInput(allocator: std.mem.Allocator, diagnostics: *diag.List, aliases: []const []const u8, resources: *const val.Value, raw: []const u8, path: []const u8) !void {

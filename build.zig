@@ -5,13 +5,20 @@ pub fn build(b: *std.Build) void {
     const optimize = b.standardOptimizeOption(.{});
 
     const serde_dep = b.dependency("serde", .{ .target = target, .optimize = optimize });
+    const regex_dep = b.dependency("zig_regex", .{ .target = target, .optimize = optimize });
 
     const lib_mod = b.addModule("circuitry", .{
         .root_source_file = b.path("src/lib.zig"),
         .target = target,
         .optimize = optimize,
     });
+    const regex_mod = b.createModule(.{
+        .root_source_file = regex_dep.path("src/regex.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
     lib_mod.addImport("serde", serde_dep.module("serde"));
+    lib_mod.addImport("regex", regex_mod);
 
     const lib = b.addLibrary(.{
         .name = "circuitry",

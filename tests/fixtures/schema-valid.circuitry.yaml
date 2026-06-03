@@ -9,11 +9,18 @@ exports:
       question: string
       limit: integer
 resources:
-  example_extension:
+  hello_extension:
     extension:
-      package: "@zinc/example"
+      package: hello
       attach: default
-      title: Example
+      resources:
+        - hello_prompt
+      input:
+        - hello_prompt
+      tools:
+        - hello_process
+      bound:
+        model: assistant
   sample_answer:
     data:
       value:
