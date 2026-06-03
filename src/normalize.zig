@@ -6,7 +6,7 @@ pub fn graph(graph_value: anytype) !void {
     const resources = val.objectGetMut(&graph_value.root, "resources") orelse return;
     if (resources.* != .mapping) return;
     var it = resources.mapping.iterator();
-    while (it.next()) |entry| try resource(graph_value.arena.allocator(), entry.value_ptr);
+    while (it.next()) |entry| try resource(graph_value.allocator(), entry.value_ptr);
 }
 
 pub fn resource(allocator: std.mem.Allocator, resource_value: *val.Value) !void {
@@ -56,7 +56,6 @@ fn canFlattenStringList(value: *const val.Value) bool {
 
 fn appendFlattened(allocator: std.mem.Allocator, out: *std.ArrayList(val.Value), value: *const val.Value) !void {
     for (value.sequence) |*item| {
-        if (item.* == .sequence) try appendFlattened(allocator, out, item)
-        else try out.append(allocator, .{ .string = try allocator.dupe(u8, item.string) });
+        if (item.* == .sequence) try appendFlattened(allocator, out, item) else try out.append(allocator, .{ .string = try allocator.dupe(u8, item.string) });
     }
 }

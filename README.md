@@ -2,15 +2,15 @@
 
 Native Zig implementation of Circuitry 0.5.
 
-Circuitry is a tiny YAML-native format for executable AI graphs. It describes the wiring of agentic systems: inputs, resources, model calls, tools, subgraphs, schemas, imports, and returns.
+Circuitry is a small YAML format for executable AI graphs. It exists so prompts, model calls, tools, subgraphs, inputs, returns, and value contracts can live in one readable file.
 
-`circuitry-zig` implements the runtime-neutral graph semantics for native runtimes:
+`circuitry-zig` implements the graph semantics needed by native runtimes:
 
 - loading and normalization
-- version validation for `circuitry: "0.5"`
+- validation for `circuitry: "0.5"`
 - imports and module resolution
 - exports and runtime input contracts
-- runtime input references such as `$question`
+- `$name` runtime input references
 - resources and known resource kinds
 - address resolution
 - dependency planning
@@ -20,7 +20,7 @@ Circuitry is a tiny YAML-native format for executable AI graphs. It describes th
 - custom resource payload/query helpers
 - diagnostics and inspection
 
-It does not execute models, tools, shell commands, package scripts, Zinc packages, sessions, permissions, provider config, prompts, services, hooks, routines, or runtime URI materialization. Runtimes own those effects.
+Runtimes provide effects: provider calls, tool implementations, URI materialization, sessions, packages, permissions, memory, policy, and services.
 
 - package version: `0.1.3`
 - graph format version: `0.5`
@@ -56,7 +56,7 @@ Supported schema features match the TypeScript Circuitry implementation:
 
 Unknown schema operators are errors except under `annotations`. Unknown YAML outside schema is preserved.
 
-Pattern support is deterministic and intentionally small: anchors, literal text, bracket character classes/ranges, and `*`, `+`, `?` quantifiers for the subset used by portable Circuitry schemas.
+Pattern support covers the portable subset used by Circuitry schemas: anchors, literal text, bracket character classes/ranges, and `*`, `+`, `?` quantifiers.
 
 ## API sketch
 

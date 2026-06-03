@@ -10,8 +10,15 @@ pub const Graph = struct {
     path: []u8,
     root: Value,
 
+    pub fn init(child_allocator: std.mem.Allocator) Graph {
+        return .{ .arena = std.heap.ArenaAllocator.init(child_allocator), .path = &.{}, .root = .null_val };
+    }
+
+    pub fn allocator(self: *Graph) std.mem.Allocator {
+        return self.arena.allocator();
+    }
+
     pub fn deinit(self: *Graph) void {
-        self.root.deinit(self.arena.allocator());
         self.arena.deinit();
     }
 
@@ -29,20 +36,22 @@ pub const Graph = struct {
 };
 
 pub fn loadYamlFile(allocator: std.mem.Allocator, io: std.Io, file_path: []const u8) !Graph {
-    var arena = std.heap.ArenaAllocator.init(allocator);
-    errdefer arena.deinit();
-    const a = arena.allocator();
+    var graph = Graph.init(allocator);
+    errdefer graph.deinit();
+    const a = graph.allocator();
     const text = try std.Io.Dir.cwd().readFileAlloc(io, file_path, a, .limited(16 * 1024 * 1024));
-    return .{ .arena = arena, .path = try canonicalPath(a, io, file_path), .root = try serde.yaml.parse(a, text) };
+    graph.path = try canonicalPath(a, io, file_path);
+    graph.root = try serde.yaml.parse(a, text);
+    return graph;
 }
 
 pub fn loadFile(allocator: std.mem.Allocator, io: std.Io, file_path: []const u8) !Graph {
-    var arena = std.heap.ArenaAllocator.init(allocator);
-    errdefer arena.deinit();
-    const a = arena.allocator();
+    var graph = Graph.init(allocator);
+    errdefer graph.deinit();
+    const a = graph.allocator();
     const text = try std.Io.Dir.cwd().readFileAlloc(io, file_path, a, .limited(16 * 1024 * 1024));
-    const root = try serde.yaml.parse(a, text);
-    var graph = Graph{ .arena = arena, .path = try canonicalPath(a, io, file_path), .root = root };
+    graph.path = try canonicalPath(a, io, file_path);
+    graph.root = try serde.yaml.parse(a, text);
     try normalize.graph(&graph);
     return graph;
 }
