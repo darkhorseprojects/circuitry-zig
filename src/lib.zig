@@ -15,7 +15,6 @@ pub const normalize = @import("normalize.zig");
 pub const resolver = @import("resolve.zig");
 pub const inspect = @import("inspect.zig");
 
-pub const Document = graph.Document;
 pub const Graph = graph.Graph;
 pub const ResolvedGraph = resolver.ResolvedGraph;
 pub const DependencyPlan = []plan.Step;

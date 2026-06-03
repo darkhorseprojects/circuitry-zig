@@ -5,22 +5,13 @@ const val = @import("value.zig");
 
 pub const Value = val.Value;
 
-pub const Document = struct {
-    arena: std.heap.ArenaAllocator,
-    path: []u8,
-    root: Value,
-
-    pub fn deinit(self: *Document) void {
-        self.arena.deinit();
-    }
-};
-
 pub const Graph = struct {
     arena: std.heap.ArenaAllocator,
     path: []u8,
     root: Value,
 
     pub fn deinit(self: *Graph) void {
+        self.root.deinit(self.arena.allocator());
         self.arena.deinit();
     }
 
@@ -37,7 +28,7 @@ pub const Graph = struct {
     }
 };
 
-pub fn loadYamlFile(allocator: std.mem.Allocator, io: std.Io, file_path: []const u8) !Document {
+pub fn loadYamlFile(allocator: std.mem.Allocator, io: std.Io, file_path: []const u8) !Graph {
     var arena = std.heap.ArenaAllocator.init(allocator);
     errdefer arena.deinit();
     const a = arena.allocator();

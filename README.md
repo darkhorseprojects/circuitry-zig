@@ -22,7 +22,7 @@ Circuitry is a tiny YAML-native format for executable AI graphs. It describes th
 
 It does not execute models, tools, shell commands, package scripts, Zinc packages, sessions, permissions, provider config, prompts, services, hooks, routines, or runtime URI materialization. Runtimes own those effects.
 
-- package version: `0.1.2`
+- package version: `0.1.3`
 - graph format version: `0.5`
 - target Zig: `0.16.0`
 - YAML foundation: [`OrlovEvgeny/serde.zig`](https://github.com/OrlovEvgeny/serde.zig)
