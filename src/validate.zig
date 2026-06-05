@@ -219,6 +219,7 @@ fn localRunSet(allocator: std.mem.Allocator, graph: *const graph_mod.Graph, expo
     if (target.module != null) return allocator.alloc([]u8, 0);
     var seen = std.StringHashMap(bool).init(allocator);
     defer seen.deinit();
+    defer freeStringMapKeys(allocator, &seen);
     var out = std.ArrayList([]u8).empty;
     errdefer freeStringList(allocator, &out);
     try localVisit(allocator, graph, aliases, &seen, &out, target.resource);
@@ -227,7 +228,11 @@ fn localRunSet(allocator: std.mem.Allocator, graph: *const graph_mod.Graph, expo
 
 fn localVisit(allocator: std.mem.Allocator, graph: *const graph_mod.Graph, aliases: []const []const u8, seen: *std.StringHashMap(bool), out: *std.ArrayList([]u8), id: []const u8) !void {
     if (seen.contains(id)) return;
-    try seen.put(id, true);
+    const owned_id = try allocator.dupe(u8, id);
+    seen.put(owned_id, true) catch |err| {
+        allocator.free(owned_id);
+        return err;
+    };
     try out.append(allocator, try allocator.dupe(u8, id));
     const rv = graph_mod.resource(graph, id) orelse return;
     const deps = try res.dependencies(allocator, rv);
@@ -298,6 +303,11 @@ fn containsString(items: []const []const u8, needle: []const u8) bool {
 fn freeStringList(allocator: std.mem.Allocator, list: *std.ArrayList([]u8)) void {
     for (list.items) |item| allocator.free(item);
     list.deinit(allocator);
+}
+
+fn freeStringMapKeys(allocator: std.mem.Allocator, map: *std.StringHashMap(bool)) void {
+    var it = map.keyIterator();
+    while (it.next()) |key| allocator.free(key.*);
 }
 
 pub fn importAliases(allocator: std.mem.Allocator, graph: *const graph_mod.Graph) ![][]u8 {
