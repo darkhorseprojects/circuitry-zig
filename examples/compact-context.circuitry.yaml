@@ -1,0 +1,15 @@
+circuitry: 0.6
+name: compact context
+about: Reduce future energy by carrying only the state that matters.
+
+takes:
+  - history
+  - current aim
+
+does: |
+  Preserve decisions, constraints, unresolved questions, file paths, commands, results, and errors.
+  Drop chatter, duplicated reasoning, and details that will not change the next action.
+  Make the next run cheaper without hiding important state.
+
+gives:
+  - compacted context

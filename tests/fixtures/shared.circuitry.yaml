@@ -1,6 +1,0 @@
-circuitry: "0.5"
-exports:
-  main: shared_text
-resources:
-  shared_text:
-    text: Shared text.

@@ -1,0 +1,19 @@
+circuitry: 0.6
+name: answer with context
+about: Use given context as input, not as a special memory system.
+
+takes:
+  - request
+  - context
+  - memory
+  - environment
+
+does: |
+  Use the least relevant context needed to answer the request.
+  Prefer direct evidence over remembered preference.
+  Ignore stale or unrelated context.
+  Ask for missing input only when it blocks the result.
+
+gives:
+  - response
+  - unused context

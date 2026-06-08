@@ -1,58 +1,21 @@
 const std = @import("std");
 
 pub const value = @import("value.zig");
-pub const graph = @import("graph.zig");
-pub const resource = @import("resource.zig");
-pub const exports = @import("export.zig");
-pub const imports = @import("imports.zig");
-pub const address = @import("address.zig");
-pub const schema = @import("schema.zig");
-pub const plan = @import("plan.zig");
-pub const query = @import("query.zig");
-pub const diagnostic = @import("diagnostic.zig");
-pub const validation = @import("validate.zig");
-pub const normalize = @import("normalize.zig");
-pub const resolver = @import("resolve.zig");
-pub const inspect = @import("inspect.zig");
+pub const shape = @import("shape.zig");
+pub const library = @import("library.zig");
 
-pub const Graph = graph.Graph;
-pub const ResolvedGraph = resolver.ResolvedGraph;
-pub const DependencyPlan = []plan.ResolvedStep;
-pub const ReturnProjection = exports.Projection;
-pub const Diagnostic = diagnostic.Diagnostic;
-pub const ValidationError = validation.ValidationError;
-pub const Address = address.Address;
+pub const Shape = shape.Shape;
+pub const ActionCard = shape.ActionCard;
+pub const Confirmation = shape.Confirmation;
 
-pub const loadYamlFile = graph.loadYamlFile;
-pub const loadFile = graph.loadFile;
-pub const validate = validation.validate;
-pub const collectDiagnostics = validation.collect;
-pub const resolve = resolver.resolve;
-pub const requiredInputs = plan.resolvedRequiredInputs;
-pub const planExport = plan.planResolvedExport;
-pub const validateRuntimeInputs = plan.validateResolvedRuntimeInputs;
-
-pub fn getExport(g: *const Graph, name: []const u8) ?exports.ExportSpec {
-    const e = g.exports() orelse return null;
-    return exports.get(e, name);
-}
-
-pub fn returnProjections(allocator: std.mem.Allocator, g: *const Graph, name: []const u8) ![]exports.Projection {
-    const spec = getExport(g, name) orelse return error.ExportNotFound;
-    const aliases = try validation.importAliases(allocator, g);
-    defer validation.freeStrings(allocator, aliases);
-    return exports.projections(allocator, spec, aliases);
-}
+pub const loadText = shape.loadText;
+pub const loadFile = shape.loadFile;
+pub const card = shape.card;
+pub const confirm = shape.confirm;
+pub const renderCard = shape.renderCard;
 
 test {
     _ = value;
-    _ = graph;
-    _ = resource;
-    _ = exports;
-    _ = address;
-    _ = schema;
-    _ = plan;
-    _ = query;
-    _ = validation;
-    _ = inspect;
+    _ = shape;
+    _ = library;
 }

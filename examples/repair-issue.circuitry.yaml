@@ -1,0 +1,22 @@
+circuitry: 0.6
+name: repair issue
+about: Make the smallest correct change.
+
+takes:
+  - issue
+  - repository
+  - environment
+  - relevant context
+
+does: |
+  Understand the failure.
+  Inspect only the relevant surface first.
+  Reproduce or localize the issue when useful.
+  Change the least code needed.
+  Run the cheapest checks that increase confidence.
+  Explain the action taken and remaining uncertainty.
+
+gives:
+  - patch
+  - checks
+  - explanation

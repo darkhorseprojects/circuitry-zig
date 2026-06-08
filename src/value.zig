@@ -4,91 +4,75 @@ const serde = @import("serde");
 pub const Value = serde.yaml.Value;
 pub const Mapping = serde.yaml.Mapping;
 
-pub fn objectGet(value: *const Value, key: []const u8) ?*const Value {
+pub fn get(value: *const Value, key: []const u8) ?*const Value {
     if (value.* != .mapping) return null;
     return value.mapping.getPtr(key);
-}
-
-pub fn objectGetMut(value: *Value, key: []const u8) ?*Value {
-    if (value.* != .mapping) return null;
-    return value.mapping.getPtr(key);
-}
-
-pub fn putOwned(object: *Value, allocator: std.mem.Allocator, key: []const u8, value: Value) !void {
-    if (object.* != .mapping) return error.InvalidObject;
-    const gop = try object.mapping.getOrPut(allocator, key);
-    if (gop.found_existing) {
-        allocator.free(key);
-        gop.value_ptr.deinit(allocator);
-        gop.value_ptr.* = value;
-    } else {
-        gop.key_ptr.* = key;
-        gop.value_ptr.* = value;
-    }
 }
 
 pub fn string(value: *const Value) ?[]const u8 {
     return if (value.* == .string) value.string else null;
 }
 
-pub fn boolValue(value: *const Value) ?bool {
-    return if (value.* == .boolean) value.boolean else null;
-}
-
-pub fn isObject(value: *const Value) bool {
-    return value.* == .mapping;
-}
-
-pub fn isArray(value: *const Value) bool {
-    return value.* == .sequence;
-}
-
-pub fn writeJsonLike(allocator: std.mem.Allocator, value: *const Value) ![]u8 {
-    var out: std.ArrayList(u8) = .empty;
-    errdefer out.deinit(allocator);
-    try appendJsonLike(allocator, &out, value, 0);
-    return out.toOwnedSlice(allocator);
-}
-
-fn appendJsonLike(allocator: std.mem.Allocator, out: *std.ArrayList(u8), value: *const Value, indent: usize) !void {
+pub fn isCircuitry06(value: *const Value) bool {
     switch (value.*) {
-        .null_val => try out.appendSlice(allocator, "null"),
-        .boolean => |b| try out.appendSlice(allocator, if (b) "true" else "false"),
-        .integer => |i| try out.print(allocator, "{d}", .{i}),
-        .float => |f| try out.print(allocator, "{d}", .{f}),
-        .string => |s| {
-            var aw = std.Io.Writer.Allocating.fromArrayList(allocator, out);
-            defer out.* = aw.toArrayList();
-            try std.json.Stringify.value(s, .{}, &aw.writer);
-        },
-        .sequence => |items| {
-            try out.appendSlice(allocator, "[");
-            for (items, 0..) |*item, i| {
-                if (i != 0) try out.appendSlice(allocator, ", ");
-                try appendJsonLike(allocator, out, item, indent + 2);
-            }
-            try out.appendSlice(allocator, "]");
-        },
-        .mapping => |*map| {
-            try out.appendSlice(allocator, "{");
-            var it = map.iterator();
-            var i: usize = 0;
-            while (it.next()) |entry| : (i += 1) {
-                if (i != 0) try out.appendSlice(allocator, ",");
-                try out.append(allocator, '\n');
-                try appendSpaces(allocator, out, indent + 2);
-                try out.print(allocator, "\"{s}\": ", .{entry.key_ptr.*});
-                try appendJsonLike(allocator, out, entry.value_ptr, indent + 2);
-            }
-            if (i != 0) {
-                try out.append(allocator, '\n');
-                try appendSpaces(allocator, out, indent);
-            }
-            try out.appendSlice(allocator, "}");
-        },
+        .string => |s| return std.mem.eql(u8, s, "0.6"),
+        .float => |f| return f == 0.6,
+        .integer => return false,
+        else => return false,
     }
 }
 
-fn appendSpaces(allocator: std.mem.Allocator, out: *std.ArrayList(u8), n: usize) !void {
-    for (0..n) |_| try out.append(allocator, ' ');
+pub fn names(allocator: std.mem.Allocator, value: ?*const Value) ![][]const u8 {
+    var out: std.ArrayList([]const u8) = .empty;
+    errdefer out.deinit(allocator);
+    const v = value orelse return out.toOwnedSlice(allocator);
+    switch (v.*) {
+        .string => |s| if (s.len != 0) try out.append(allocator, try allocator.dupe(u8, s)),
+        .sequence => |items| {
+            for (items) |*item| if (item.* == .string) try out.append(allocator, try allocator.dupe(u8, item.string));
+        },
+        .mapping => |*map| {
+            var it = map.iterator();
+            while (it.next()) |entry| try out.append(allocator, try allocator.dupe(u8, entry.key_ptr.*));
+        },
+        else => {},
+    }
+    return out.toOwnedSlice(allocator);
+}
+
+pub fn actionNames(allocator: std.mem.Allocator, value: ?*const Value) ![][]const u8 {
+    var out: std.ArrayList([]const u8) = .empty;
+    errdefer out.deinit(allocator);
+    const v = value orelse return out.toOwnedSlice(allocator);
+    switch (v.*) {
+        .string => |s| if (std.mem.trim(u8, s, " \t\r\n").len != 0) try out.append(allocator, try allocator.dupe(u8, "action")),
+        .sequence => |items| {
+            for (items, 0..) |_, i| {
+                const label = try std.fmt.allocPrint(allocator, "{d}", .{i + 1});
+                try out.append(allocator, label);
+            }
+        },
+        .mapping => |*map| {
+            var it = map.iterator();
+            while (it.next()) |entry| try out.append(allocator, try allocator.dupe(u8, entry.key_ptr.*));
+        },
+        else => {},
+    }
+    return out.toOwnedSlice(allocator);
+}
+
+pub fn empty(value: ?*const Value) bool {
+    const v = value orelse return true;
+    switch (v.*) {
+        .null_val => return true,
+        .string => |s| return std.mem.trim(u8, s, " \t\r\n").len == 0,
+        .sequence => |items| return items.len == 0,
+        .mapping => |*map| return map.count() == 0,
+        else => return false,
+    }
+}
+
+pub fn freeStrings(allocator: std.mem.Allocator, items: [][]const u8) void {
+    for (items) |item| allocator.free(item);
+    allocator.free(items);
 }

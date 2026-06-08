@@ -1,0 +1,22 @@
+circuitry: 0.6
+name: deep search
+about: Spend only the search effort needed to answer with support.
+
+takes:
+  - question
+  - current date
+  - available web access
+
+does:
+  sense: |
+    Understand what evidence would actually reduce uncertainty.
+  act: |
+    Search from multiple angles. Prefer primary, recent, and authoritative sources.
+    Read the strongest sources instead of collecting noise.
+  settle: |
+    Stop when the answer is supported enough. Report uncertainty instead of over-searching.
+
+gives:
+  - answer
+  - citations
+  - uncertainty

@@ -7,79 +7,88 @@ pub fn main(init: std.process.Init) !void {
     defer args.deinit();
     _ = args.next();
     const command = args.next() orelse return usage(init.io);
-    const file = args.next() orelse return usage(init.io);
+    const target = args.next() orelse if (!std.mem.eql(u8, command, "help")) return usage(init.io) else "";
 
-    var graph = try circuitry.loadFile(allocator, init.io, file);
-
-    if (std.mem.eql(u8, command, "check")) {
-        defer graph.deinit();
-        try validateOrPrint(allocator, init.io, &graph);
-        try writeStdout(init.io, "ok\n");
-        return;
-    }
-    if (std.mem.eql(u8, command, "inspect")) {
-        defer graph.deinit();
-        try validateOrPrint(allocator, init.io, &graph);
-        const text = try circuitry.inspect.render(allocator, &graph);
-        defer allocator.free(text);
-        try writeStdout(init.io, text);
-        return;
-    }
-    if (std.mem.eql(u8, command, "resolve")) {
-        var resolved = circuitry.resolve(allocator, init.io, graph, .{}) catch |err| {
-            // resolve consumes graph on both success and error.
-            try printError(init.io, err);
-            std.process.exit(1);
-        };
-        defer resolved.deinit();
-        const text = try circuitry.inspect.render(allocator, &resolved.graph);
-        defer allocator.free(text);
-        try writeStdout(init.io, text);
-        return;
-    }
-    graph.deinit();
+    if (std.mem.eql(u8, command, "read")) return read(init.io, allocator, target);
+    if (std.mem.eql(u8, command, "confirm")) return confirm(init.io, allocator, target);
+    if (std.mem.eql(u8, command, "asks")) return names(init.io, allocator, target, .takes);
+    if (std.mem.eql(u8, command, "gives")) return names(init.io, allocator, target, .gives);
+    if (std.mem.eql(u8, command, "library")) return library(init.io, allocator, target);
     return usage(init.io);
 }
 
-fn validateOrPrint(allocator: std.mem.Allocator, io: std.Io, graph: *const circuitry.Graph) !void {
-    var diagnostics: circuitry.diagnostic.List = .empty;
-    defer {
-        circuitry.diagnostic.deinitList(allocator, diagnostics.items);
-        diagnostics.deinit(allocator);
+const Which = enum { takes, gives };
+
+fn read(io: std.Io, allocator: std.mem.Allocator, path: []const u8) !void {
+    var shape = try circuitry.loadFile(io, allocator, path);
+    defer shape.deinit();
+    var c = try circuitry.card(allocator, &shape);
+    defer c.deinit();
+    const text = try circuitry.renderCard(allocator, &c);
+    defer allocator.free(text);
+    try stdout(io, text);
+}
+
+fn confirm(io: std.Io, allocator: std.mem.Allocator, path: []const u8) !void {
+    var shape = try circuitry.loadFile(io, allocator, path);
+    defer shape.deinit();
+    var result = try circuitry.confirm(allocator, &shape);
+    defer result.deinit();
+    const text = try circuitry.renderCard(allocator, &result.card);
+    defer allocator.free(text);
+    try stdout(io, text);
+    try printList(io, "fix", result.problems);
+    try printList(io, "notice", result.cautions);
+    try printList(io, "Zinc should collect", result.asks);
+    try stdout(io, if (result.ready) "\nready\n" else "\nnot ready\n");
+    if (!result.ready) std.process.exit(1);
+}
+
+fn names(io: std.Io, allocator: std.mem.Allocator, path: []const u8, which: Which) !void {
+    var shape = try circuitry.loadFile(io, allocator, path);
+    defer shape.deinit();
+    var c = try circuitry.card(allocator, &shape);
+    defer c.deinit();
+    const items = if (which == .takes) c.takes else c.gives;
+    for (items) |item| { try stdout(io, item); try stdout(io, "\n"); }
+}
+
+fn library(io: std.Io, allocator: std.mem.Allocator, dir_path: []const u8) !void {
+    var dir = try std.Io.Dir.cwd().openDir(io, dir_path, .{ .iterate = true });
+    defer dir.close(io);
+    var it = dir.iterate();
+    while (try it.next(io)) |entry| {
+        if (entry.kind == .file and circuitry.library.isCircuitryPath(entry.name)) {
+            const path = try std.fs.path.join(allocator, &.{ dir_path, entry.name });
+            defer allocator.free(path);
+            var shape = try circuitry.loadFile(io, allocator, path);
+            defer shape.deinit();
+            var c = try circuitry.card(allocator, &shape);
+            defer c.deinit();
+            try stdout(io, path); try stdout(io, "\n  "); try stdout(io, c.name); try stdout(io, "\n");
+        }
     }
-    try circuitry.collectDiagnostics(allocator, graph, &diagnostics);
-    if (diagnostics.items.len == 0) return;
-    for (diagnostics.items) |d| try printDiagnostic(io, d);
-    std.process.exit(1);
 }
 
-fn printDiagnostic(io: std.Io, d: circuitry.Diagnostic) !void {
-    var buffer: [1024]u8 = undefined;
-    var writer = std.Io.File.stderr().writer(io, &buffer);
-    try writer.interface.print("{s} {s}: {s}\n", .{ d.code, d.path, d.message });
-    try writer.interface.flush();
-}
-
-fn printError(io: std.Io, err: anyerror) !void {
-    var buffer: [1024]u8 = undefined;
-    var writer = std.Io.File.stderr().writer(io, &buffer);
-    try writer.interface.print("error: {s}\n", .{@errorName(err)});
-    try writer.interface.flush();
+fn printList(io: std.Io, title: []const u8, items: [][]const u8) !void {
+    if (items.len == 0) return;
+    try stdout(io, "\n"); try stdout(io, title); try stdout(io, ":\n");
+    for (items) |item| { try stdout(io, "- "); try stdout(io, item); try stdout(io, "\n"); }
 }
 
 fn usage(io: std.Io) !void {
-    try writeStderr(io, "usage: circuitry-zig <check|inspect|resolve> <graph.circuitry.yaml>\n");
+    try stderr(io, "usage: circuitry-zig <read|confirm|asks|gives|library> <file-or-dir>\n");
     std.process.exit(1);
 }
 
-fn writeStdout(io: std.Io, bytes: []const u8) !void {
+fn stdout(io: std.Io, bytes: []const u8) !void {
     var buffer: [4096]u8 = undefined;
     var writer = std.Io.File.stdout().writer(io, &buffer);
     try writer.interface.writeAll(bytes);
     try writer.interface.flush();
 }
 
-fn writeStderr(io: std.Io, bytes: []const u8) !void {
+fn stderr(io: std.Io, bytes: []const u8) !void {
     var buffer: [4096]u8 = undefined;
     var writer = std.Io.File.stderr().writer(io, &buffer);
     try writer.interface.writeAll(bytes);

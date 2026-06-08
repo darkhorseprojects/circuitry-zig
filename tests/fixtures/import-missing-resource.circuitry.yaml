@@ -1,7 +1,0 @@
-circuitry: "0.5"
-imports:
-  shared: ./shared.circuitry.yaml
-resources:
-  assistant:
-    model:
-      input: [shared.missing]

@@ -1,6 +1,6 @@
 .{
     .name = .circuitry,
-    .version = "0.1.5",
+    .version = "0.2.0",
     .fingerprint = 0xa9e06bff0dfff5a6,
     .minimum_zig_version = "0.16.0",
     .dependencies = .{
@@ -8,16 +8,13 @@
             .url = "git+https://github.com/OrlovEvgeny/serde.zig#875e1b680b02bfbc2f146ea3d3f91d724f86c500",
             .hash = "serde-1.0.1-1DszT_hrDQAURHcyOhR7wEKwqbF8FYl8vN26pKLLCkWn",
         },
-        .zig_regex = .{
-            .url = "git+https://github.com/zig-utils/zig-regex#4fd1591bb5f76e23c24f5f83ecdd9d78a0f0b229",
-            .hash = "zig_regex-0.2.0-omky0TH7EgAr6sxxA_3gnH1eEI0Vi0pvyvkAgPjfSCPI",
-        },
     },
     .paths = .{
         "build.zig",
         "build.zig.zon",
         "src",
         "tests",
+        "examples",
         "README.md",
         "LICENSE",
     },
