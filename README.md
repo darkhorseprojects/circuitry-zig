@@ -1,8 +1,6 @@
 # circuitry-zig
 
-A Zig 0.16-native mirror of Circuitry 0.6 for Zinc.
-
-Circuitry 0.6 files are reusable shapes of action:
+Zig library and CLI for reading, confirming, and browsing Circuitry files.
 
 ```yaml
 circuitry: 0.6
@@ -19,13 +17,7 @@ gives:
   - citations
 ```
 
-This package is not a runtime, compiler, graph engine, or tool registry. It helps Zinc read, confirm, edit, compose, and browse `.circuitry.yaml` artifacts directly.
-
-## Zig version
-
-This repo targets Zig 0.16.0.
-
-The build file uses the 0.16 style shown in the official docs: `std.Build`, `b.createModule`, `.root_module`, and `exe.run()`. The CLI and file/directory reads are written around the 0.16 IO model: `main(init: std.process.Init)`, `init.io`, `std.Io.Dir.cwd().readFileAlloc(io, ...)`, `std.Io.Dir.cwd().openDir(io, ...)`, `dir.close(io)`, and iterator `next(io)`.
+Circuitry files are reusable shapes of action. This package is not a runtime, compiler, or graph engine. It lets Zinc and other Zig hosts work with `.circuitry.yaml` artifacts directly.
 
 ## Commands
 
@@ -41,8 +33,6 @@ zig build run -- library examples
 
 ## Native fields
 
-Only these are native:
-
 ```text
 circuitry
 name
@@ -52,4 +42,4 @@ does
 gives
 ```
 
-All other fields are preserved by YAML implementations and ignored by core Circuitry.
+All other fields are preserved and ignored by core Circuitry.
