@@ -6,7 +6,7 @@ pub fn build(b: *std.Build) void {
 
     const serde_dep = b.dependency("serde", .{ .target = target, .optimize = optimize });
 
-    const lib_mod = b.createModule(.{
+    const lib_mod = b.addModule("circuitry", .{
         .root_source_file = b.path("src/lib.zig"),
         .target = target,
         .optimize = optimize,
