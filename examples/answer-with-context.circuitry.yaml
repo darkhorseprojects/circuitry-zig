@@ -1,4 +1,4 @@
-circuitry: "0.6.2"
+circuitry: "0.6.4"
 name: answer with context
 about: Use given context as explicit inputs, not as ambient memory.
 

@@ -1,11 +1,11 @@
 # circuitry-zig
 
-Zig library and CLI for reading, confirming, and browsing Circuitry files.
+Zig library and CLI for reading, confirming, normalizing, and browsing Circuitry files.
 
 Circuitry is YAML for action systems.
 
 ```yaml
-circuitry: "0.6.2"
+circuitry: "0.6.4"
 name: cited answer
 
 takes:
@@ -53,12 +53,16 @@ gives
 
 Circuitry also owns `$value` references.
 
-## System view
+## Normalized facts
 
-The library exposes `systemView`, which extracts:
+The library exposes `normalize`, which returns stable document facts:
 
-- top-level `$takes`
-- `uses` entries
-- top-level `$gives`
-- `$` value references
+- top-level `takes` values
+- top-level `gives` values
+- `parts` from `uses` entries
+- local part bindings
 - diagnostics for unresolved values, duplicate producers, and cycles
+
+`materialize` walks those normalized facts with caller-provided callbacks, so tools can write the facts into their own substrate.
+
+Universal value labels are `bytes`, `text`, `number`, `boolean`, `list`, and `map`. Other labels are valid and preserved.

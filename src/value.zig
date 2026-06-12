@@ -14,7 +14,7 @@ pub fn string(value: *const Value) ?[]const u8 {
     return if (value.* == .string) value.string else null;
 }
 
-pub fn isCircuitry062(value: *const Value) bool {
+pub fn isCircuitryVersion(value: *const Value) bool {
     switch (value.*) {
         .string => |s| return std.mem.eql(u8, s, version.circuitry),
         else => return false,

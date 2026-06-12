@@ -33,7 +33,7 @@ pub const ActionCard = struct {
     }
 };
 
-pub const ValueBinding = struct {
+const ValueBinding = struct {
     local: ?[]const u8,
     value: []const u8,
     type_label: ?[]const u8,
@@ -45,7 +45,7 @@ pub const ValueBinding = struct {
     }
 };
 
-pub const UseEntry = struct {
+const UseEntry = struct {
     allocator: std.mem.Allocator,
     name: []const u8,
     shape: ?[]const u8,
@@ -77,7 +77,7 @@ pub const SystemDiagnostic = struct {
     }
 };
 
-pub const SystemView = struct {
+const SystemView = struct {
     allocator: std.mem.Allocator,
     takes: []ValueBinding,
     uses: []UseEntry,
@@ -103,7 +103,7 @@ pub const Confirmation = struct {
     problems: [][]const u8,
     cautions: [][]const u8,
     asks: [][]const u8,
-    system: SystemView,
+    system: NormalizedDoc,
 
     pub fn deinit(self: *Confirmation) void {
         self.card.deinit();
@@ -112,6 +112,69 @@ pub const Confirmation = struct {
         value.freeStrings(self.allocator, self.asks);
         self.system.deinit();
     }
+};
+
+pub const Direction = enum { takes, gives };
+
+pub const NormalizedValue = struct {
+    name: []const u8,
+    type_label: ?[]const u8,
+    direction: Direction,
+};
+
+pub const NormalizedBinding = struct {
+    local: ?[]const u8,
+    value: []const u8,
+    type_label: ?[]const u8,
+};
+
+pub const NormalizedPart = struct {
+    name: []const u8,
+    shape: ?[]const u8,
+    model: ?[]const u8,
+    instructions: ?[]const u8,
+    takes: []NormalizedBinding,
+    gives: []NormalizedBinding,
+};
+
+pub const NormalizedDoc = struct {
+    allocator: std.mem.Allocator,
+    version: []const u8,
+    name: []const u8,
+    about: ?[]const u8,
+    takes: []NormalizedValue,
+    gives: []NormalizedValue,
+    parts: []NormalizedPart,
+    diagnostics: []SystemDiagnostic,
+
+    pub fn deinit(self: *NormalizedDoc) void {
+        self.allocator.free(self.version);
+        self.allocator.free(self.name);
+        if (self.about) |about| self.allocator.free(about);
+        freeNormalizedValues(self.allocator, self.takes);
+        freeNormalizedValues(self.allocator, self.gives);
+        for (self.parts) |*part| freeNormalizedPart(self.allocator, part);
+        self.allocator.free(self.parts);
+        for (self.diagnostics) |*diagnostic| diagnostic.deinit();
+        self.allocator.free(self.diagnostics);
+    }
+};
+
+pub const MaterializedBinding = struct {
+    part_name: []const u8,
+    side: Direction,
+    local: ?[]const u8,
+    value: []const u8,
+    type_label: ?[]const u8,
+};
+
+pub const Materializer = struct {
+    context: *anyopaque,
+    doc: *const fn (context: *anyopaque, doc: *const NormalizedDoc) anyerror!void,
+    value: *const fn (context: *anyopaque, value_fact: NormalizedValue) anyerror!void,
+    part: *const fn (context: *anyopaque, part_fact: *const NormalizedPart) anyerror!void,
+    binding: *const fn (context: *anyopaque, binding_fact: MaterializedBinding) anyerror!void,
+    diagnostic: *const fn (context: *anyopaque, diagnostic_fact: SystemDiagnostic) anyerror!void,
 };
 
 const native = [_][]const u8{ "circuitry", "name", "about", "takes", "uses", "does", "gives" };
@@ -151,7 +214,7 @@ pub fn card(allocator: std.mem.Allocator, shape: *const Shape) !ActionCard {
     };
 }
 
-pub fn systemView(allocator: std.mem.Allocator, shape: *const Shape) !SystemView {
+fn systemView(allocator: std.mem.Allocator, shape: *const Shape) !SystemView {
     const takes = try topLevelBindings(allocator, value.get(&shape.root, "takes"));
     errdefer freeBindings(allocator, takes);
     const uses = try useEntries(allocator, value.get(&shape.root, "uses"));
@@ -186,7 +249,7 @@ pub fn systemView(allocator: std.mem.Allocator, shape: *const Shape) !SystemView
 pub fn confirm(allocator: std.mem.Allocator, shape: *const Shape) !Confirmation {
     var c = try card(allocator, shape);
     errdefer c.deinit();
-    var system = try systemView(allocator, shape);
+    var system = try normalize(allocator, shape);
     errdefer system.deinit();
 
     var problems: std.ArrayList([]const u8) = .empty;
@@ -197,7 +260,7 @@ pub fn confirm(allocator: std.mem.Allocator, shape: *const Shape) !Confirmation 
     }
 
     const version_node = value.get(&shape.root, "circuitry");
-    if (version_node == null or !value.isCircuitry062(version_node.?)) {
+    if (version_node == null or !value.isCircuitryVersion(version_node.?)) {
         const msg = try std.fmt.allocPrint(allocator, "Use `circuitry: \"{s}\"`.", .{version.circuitry});
         try problems.append(allocator, msg);
     }
@@ -217,7 +280,7 @@ pub fn confirm(allocator: std.mem.Allocator, shape: *const Shape) !Confirmation 
 
     for (system.diagnostics) |diagnostic| try problems.append(allocator, try allocator.dupe(u8, diagnostic.message));
 
-    const asks = try dupeBindingValues(allocator, system.takes);
+    const asks = try dupeNormalizedValueNames(allocator, system.takes);
     return .{
         .allocator = allocator,
         .ready = problems.items.len == 0,
@@ -227,6 +290,85 @@ pub fn confirm(allocator: std.mem.Allocator, shape: *const Shape) !Confirmation 
         .asks = asks,
         .system = system,
     };
+}
+
+pub fn normalize(allocator: std.mem.Allocator, shape: *const Shape) !NormalizedDoc {
+    var c = try card(allocator, shape);
+    defer c.deinit();
+    var system = try systemView(allocator, shape);
+    defer system.deinit();
+
+    const version_node = value.get(&shape.root, "circuitry");
+    const version_text = if (version_node) |node| value.string(node) orelse version.circuitry else version.circuitry;
+
+    const takes = try cloneNormalizedValues(allocator, system.takes, .takes);
+    errdefer freeNormalizedValues(allocator, takes);
+    const gives = try cloneNormalizedValues(allocator, system.gives, .gives);
+    errdefer freeNormalizedValues(allocator, gives);
+    const parts = try cloneNormalizedParts(allocator, system.uses);
+    errdefer {
+        for (parts) |*part| freeNormalizedPart(allocator, part);
+        allocator.free(parts);
+    }
+    const diagnostics_copy = try cloneDiagnostics(allocator, system.diagnostics);
+    errdefer {
+        for (diagnostics_copy) |*diagnostic| diagnostic.deinit();
+        allocator.free(diagnostics_copy);
+    }
+
+    return .{
+        .allocator = allocator,
+        .version = try allocator.dupe(u8, version_text),
+        .name = try allocator.dupe(u8, c.name),
+        .about = if (c.about) |about| try allocator.dupe(u8, about) else null,
+        .takes = takes,
+        .gives = gives,
+        .parts = parts,
+        .diagnostics = diagnostics_copy,
+    };
+}
+
+pub fn stableDocId(allocator: std.mem.Allocator, source: []const u8) ![]u8 {
+    var digest: [32]u8 = undefined;
+    std.crypto.hash.sha2.Sha256.hash(source, &digest, .{});
+    const hex = std.fmt.bytesToHex(digest, .lower);
+    return std.fmt.allocPrint(allocator, "doc_{s}", .{hex[0..24]});
+}
+
+pub fn partKey(allocator: std.mem.Allocator, part_name: []const u8) ![]u8 {
+    return std.fmt.allocPrint(allocator, "part:{s}", .{part_name});
+}
+
+pub fn valueKey(allocator: std.mem.Allocator, direction: Direction, value_name: []const u8) ![]u8 {
+    return std.fmt.allocPrint(allocator, "value:{s}:{s}", .{ @tagName(direction), value_name });
+}
+
+pub fn bindingKey(allocator: std.mem.Allocator, part_name: []const u8, side: Direction, local_or_value: []const u8) ![]u8 {
+    return std.fmt.allocPrint(allocator, "binding:{s}:{s}:{s}", .{ part_name, @tagName(side), local_or_value });
+}
+
+pub fn materialize(normalized: *const NormalizedDoc, visitor: Materializer) !void {
+    try visitor.doc(visitor.context, normalized);
+    for (normalized.takes) |item| try visitor.value(visitor.context, item);
+    for (normalized.gives) |item| try visitor.value(visitor.context, item);
+    for (normalized.parts) |part| {
+        try visitor.part(visitor.context, &part);
+        for (part.takes) |binding| try visitor.binding(visitor.context, .{
+            .part_name = part.name,
+            .side = .takes,
+            .local = binding.local,
+            .value = binding.value,
+            .type_label = binding.type_label,
+        });
+        for (part.gives) |binding| try visitor.binding(visitor.context, .{
+            .part_name = part.name,
+            .side = .gives,
+            .local = binding.local,
+            .value = binding.value,
+            .type_label = binding.type_label,
+        });
+    }
+    for (normalized.diagnostics) |diagnostic| try visitor.diagnostic(visitor.context, diagnostic);
 }
 
 pub fn nonNativeFields(allocator: std.mem.Allocator, shape: *const Shape) ![][]const u8 {
@@ -318,9 +460,94 @@ fn localBindings(allocator: std.mem.Allocator, maybe: ?*const Value) ![]ValueBin
     if (v.* != .mapping) return out.toOwnedSlice(allocator);
     var it = v.mapping.iterator();
     while (it.next()) |entry| {
-        if (bindingValue(entry.value_ptr)) |system_value| try out.append(allocator, try makeBinding(allocator, entry.key_ptr.*, system_value, null));
+        if (bindingValue(entry.value_ptr)) |system_value| try out.append(allocator, try makeBinding(allocator, entry.key_ptr.*, system_value, bindingType(entry.value_ptr)));
     }
     return out.toOwnedSlice(allocator);
+}
+
+fn cloneNormalizedValues(allocator: std.mem.Allocator, bindings: []const ValueBinding, direction: Direction) ![]NormalizedValue {
+    var out: std.ArrayList(NormalizedValue) = .empty;
+    errdefer freeNormalizedValues(allocator, out.items);
+    for (bindings) |binding| try out.append(allocator, .{
+        .name = try allocator.dupe(u8, binding.value),
+        .type_label = if (binding.type_label) |label| try allocator.dupe(u8, label) else null,
+        .direction = direction,
+    });
+    return out.toOwnedSlice(allocator);
+}
+
+fn cloneNormalizedBindings(allocator: std.mem.Allocator, bindings: []const ValueBinding) ![]NormalizedBinding {
+    var out: std.ArrayList(NormalizedBinding) = .empty;
+    errdefer freeNormalizedBindings(allocator, out.items);
+    for (bindings) |binding| try out.append(allocator, .{
+        .local = if (binding.local) |local| try allocator.dupe(u8, local) else null,
+        .value = try allocator.dupe(u8, binding.value),
+        .type_label = if (binding.type_label) |label| try allocator.dupe(u8, label) else null,
+    });
+    return out.toOwnedSlice(allocator);
+}
+
+fn cloneNormalizedParts(allocator: std.mem.Allocator, uses: []const UseEntry) ![]NormalizedPart {
+    var out: std.ArrayList(NormalizedPart) = .empty;
+    errdefer {
+        for (out.items) |*part| freeNormalizedPart(allocator, part);
+        out.deinit(allocator);
+    }
+    for (uses) |entry| {
+        const takes = try cloneNormalizedBindings(allocator, entry.takes);
+        errdefer freeNormalizedBindings(allocator, takes);
+        const gives = try cloneNormalizedBindings(allocator, entry.gives);
+        errdefer freeNormalizedBindings(allocator, gives);
+        try out.append(allocator, .{
+            .name = try allocator.dupe(u8, entry.name),
+            .shape = if (entry.shape) |shape_ref| try allocator.dupe(u8, shape_ref) else null,
+            .model = if (entry.model) |model| try allocator.dupe(u8, model) else null,
+            .instructions = if (entry.instructions) |instructions| try allocator.dupe(u8, instructions) else null,
+            .takes = takes,
+            .gives = gives,
+        });
+    }
+    return out.toOwnedSlice(allocator);
+}
+
+fn cloneDiagnostics(allocator: std.mem.Allocator, diagnostics_in: []const SystemDiagnostic) ![]SystemDiagnostic {
+    var out: std.ArrayList(SystemDiagnostic) = .empty;
+    errdefer {
+        for (out.items) |*diagnostic| diagnostic.deinit();
+        out.deinit(allocator);
+    }
+    for (diagnostics_in) |diagnostic| try out.append(allocator, .{
+        .allocator = allocator,
+        .kind = try allocator.dupe(u8, diagnostic.kind),
+        .message = try allocator.dupe(u8, diagnostic.message),
+    });
+    return out.toOwnedSlice(allocator);
+}
+
+fn freeNormalizedValues(allocator: std.mem.Allocator, values: []NormalizedValue) void {
+    for (values) |item| {
+        allocator.free(item.name);
+        if (item.type_label) |label| allocator.free(label);
+    }
+    allocator.free(values);
+}
+
+fn freeNormalizedBindings(allocator: std.mem.Allocator, bindings: []NormalizedBinding) void {
+    for (bindings) |item| {
+        if (item.local) |local| allocator.free(local);
+        allocator.free(item.value);
+        if (item.type_label) |label| allocator.free(label);
+    }
+    allocator.free(bindings);
+}
+
+fn freeNormalizedPart(allocator: std.mem.Allocator, part: *NormalizedPart) void {
+    allocator.free(part.name);
+    if (part.shape) |shape_ref| allocator.free(shape_ref);
+    if (part.model) |model| allocator.free(model);
+    if (part.instructions) |instructions| allocator.free(instructions);
+    freeNormalizedBindings(allocator, part.takes);
+    freeNormalizedBindings(allocator, part.gives);
 }
 
 fn collectDiagnostics(allocator: std.mem.Allocator, takes: []const ValueBinding, uses: []const UseEntry, gives: []const ValueBinding, out: *std.ArrayList(SystemDiagnostic)) !void {
@@ -472,10 +699,10 @@ fn contains(comptime haystack: []const []const u8, needle: []const u8) bool {
     return false;
 }
 
-fn dupeBindingValues(allocator: std.mem.Allocator, items: []const ValueBinding) ![][]const u8 {
+fn dupeNormalizedValueNames(allocator: std.mem.Allocator, items: []const NormalizedValue) ![][]const u8 {
     var out: std.ArrayList([]const u8) = .empty;
     errdefer freeList(allocator, &out);
-    for (items) |item| try out.append(allocator, try allocator.dupe(u8, item.value));
+    for (items) |item| try out.append(allocator, try allocator.dupe(u8, item.name));
     return out.toOwnedSlice(allocator);
 }
 

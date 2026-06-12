@@ -1,10 +1,10 @@
-circuitry: "0.6.2"
+circuitry: "0.6.4"
 name: repair issue
 about: Make the smallest correct change.
 
 takes:
   $issue: text
-  $repository: directory
+  $repository: text
   $environment: text
   $relevant_context: text
 
@@ -36,6 +36,6 @@ uses:
       explanation: $explanation
 
 gives:
-  $patch: patch
+  $patch: text
   $checks: text
   $explanation: text
