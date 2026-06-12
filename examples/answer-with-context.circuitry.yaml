@@ -1,19 +1,35 @@
-circuitry: 0.6
+circuitry: "0.6.1"
 name: answer with context
-about: Use given context as input, not as a special memory system.
+about: Use given context as explicit inputs, not as ambient memory.
 
 takes:
-  - request
-  - context
-  - memory
-  - environment
+  $request:
+    type: text
+  $context:
+    type: text
+  $memory:
+    type: text
+  $environment:
+    type: text
 
-does: |
-  Use the least relevant context needed to answer the request.
-  Prefer direct evidence over remembered preference.
-  Ignore stale or unrelated context.
-  Ask for missing input only when it blocks the result.
+uses:
+  answer:
+    takes:
+      request: $request
+      context: $context
+      memory: $memory
+      environment: $environment
+    does: |
+      Use the least relevant context needed to answer the request.
+      Prefer direct evidence over remembered preference.
+      Ignore stale or unrelated context.
+      Ask for missing input only when it blocks the result.
+    gives:
+      response: $response
+      unused_context: $unused_context
 
 gives:
-  - response
-  - unused context
+  $response:
+    type: text
+  $unused_context:
+    type: text

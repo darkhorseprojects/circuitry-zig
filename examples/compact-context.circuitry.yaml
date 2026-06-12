@@ -1,15 +1,25 @@
-circuitry: 0.6
+circuitry: "0.6.1"
 name: compact context
 about: Reduce future energy by carrying only the state that matters.
 
 takes:
-  - history
-  - current aim
+  $history:
+    type: text
+  $current_aim:
+    type: text
 
-does: |
-  Preserve decisions, constraints, unresolved questions, file paths, commands, results, and errors.
-  Drop chatter, duplicated reasoning, and details that will not change the next action.
-  Make the next run cheaper without hiding important state.
+uses:
+  compact:
+    takes:
+      history: $history
+      current_aim: $current_aim
+    does: |
+      Preserve decisions, constraints, unresolved questions, file paths, commands, results, and errors.
+      Drop chatter, duplicated reasoning, and details that will not change the next action.
+      Make the next run cheaper without hiding important state.
+    gives:
+      compacted_context: $compacted_context
 
 gives:
-  - compacted context
+  $compacted_context:
+    type: text

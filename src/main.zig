@@ -12,12 +12,13 @@ pub fn main(init: std.process.Init) !void {
     if (std.mem.eql(u8, command, "read")) return read(init.io, allocator, target);
     if (std.mem.eql(u8, command, "confirm")) return confirm(init.io, allocator, target);
     if (std.mem.eql(u8, command, "asks")) return names(init.io, allocator, target, .takes);
+    if (std.mem.eql(u8, command, "uses")) return names(init.io, allocator, target, .uses);
     if (std.mem.eql(u8, command, "gives")) return names(init.io, allocator, target, .gives);
     if (std.mem.eql(u8, command, "library")) return library(init.io, allocator, target);
     return usage(init.io);
 }
 
-const Which = enum { takes, gives };
+const Which = enum { takes, uses, gives };
 
 fn read(io: std.Io, allocator: std.mem.Allocator, path: []const u8) !void {
     var shape = try circuitry.loadFile(io, allocator, path);
@@ -49,8 +50,15 @@ fn names(io: std.Io, allocator: std.mem.Allocator, path: []const u8, which: Whic
     defer shape.deinit();
     var c = try circuitry.card(allocator, &shape);
     defer c.deinit();
-    const items = if (which == .takes) c.takes else c.gives;
-    for (items) |item| { try stdout(io, item); try stdout(io, "\n"); }
+    const items = switch (which) {
+        .takes => c.takes,
+        .uses => c.uses,
+        .gives => c.gives,
+    };
+    for (items) |item| {
+        try stdout(io, item);
+        try stdout(io, "\n");
+    }
 }
 
 fn library(io: std.Io, allocator: std.mem.Allocator, dir_path: []const u8) !void {
@@ -65,19 +73,28 @@ fn library(io: std.Io, allocator: std.mem.Allocator, dir_path: []const u8) !void
             defer shape.deinit();
             var c = try circuitry.card(allocator, &shape);
             defer c.deinit();
-            try stdout(io, path); try stdout(io, "\n  "); try stdout(io, c.name); try stdout(io, "\n");
+            try stdout(io, path);
+            try stdout(io, "\n  ");
+            try stdout(io, c.name);
+            try stdout(io, "\n");
         }
     }
 }
 
 fn printList(io: std.Io, title: []const u8, items: [][]const u8) !void {
     if (items.len == 0) return;
-    try stdout(io, "\n"); try stdout(io, title); try stdout(io, ":\n");
-    for (items) |item| { try stdout(io, "- "); try stdout(io, item); try stdout(io, "\n"); }
+    try stdout(io, "\n");
+    try stdout(io, title);
+    try stdout(io, ":\n");
+    for (items) |item| {
+        try stdout(io, "- ");
+        try stdout(io, item);
+        try stdout(io, "\n");
+    }
 }
 
 fn usage(io: std.Io) !void {
-    try stderr(io, "usage: circuitry-zig <read|confirm|asks|gives|library> <file-or-dir>\n");
+    try stderr(io, "usage: circuitry-zig <read|confirm|asks|uses|gives|library> <file-or-dir>\n");
     std.process.exit(1);
 }
 

@@ -2,22 +2,32 @@
 
 Zig library and CLI for reading, confirming, and browsing Circuitry files.
 
+Circuitry is YAML for action systems. Zinc is the host that runs them.
+
 ```yaml
-circuitry: 0.6
-name: deep search
+circuitry: "0.6.1"
+name: cited research answer
 
 takes:
-  - question
+  $question:
+    type: text
 
-does: |
-  Spend the least action needed to answer with support.
+uses:
+  draft:
+    model: fast
+    takes:
+      question: $question
+    does: |
+      Draft a clear answer.
+    gives:
+      answer: $answer
 
 gives:
-  - answer
-  - citations
+  $answer:
+    type: text
 ```
 
-Circuitry files are reusable shapes of action. This package is not a runtime, compiler, or graph engine. It lets Zinc and other Zig hosts work with `.circuitry.yaml` artifacts directly.
+This package is not a runtime, compiler, or graph engine. It lets Zinc and other Zig hosts work with `.circuitry.yaml` artifacts directly.
 
 ## Commands
 
@@ -27,6 +37,7 @@ zig build test
 zig build run -- read examples/deep-search.circuitry.yaml
 zig build run -- confirm examples/deep-search.circuitry.yaml
 zig build run -- asks examples/deep-search.circuitry.yaml
+zig build run -- uses examples/deep-search.circuitry.yaml
 zig build run -- gives examples/deep-search.circuitry.yaml
 zig build run -- library examples
 ```
@@ -38,8 +49,30 @@ circuitry
 name
 about
 takes
+uses
 does
 gives
 ```
 
-All other fields are preserved and ignored by core Circuitry.
+Circuitry also owns `$value` references.
+
+Zinc owns:
+
+```text
+zinc
+@package references
+model
+```
+
+The parsed YAML root preserves Zinc fields and references. `model` is surfaced on `uses` entries but not interpreted.
+
+## System view
+
+The library exposes `systemView`, which extracts:
+
+- top-level `$takes`
+- `uses` entries
+- top-level `$gives`
+- `$` value references
+- `@` package references
+- diagnostics for unresolved values, duplicate producers, and cycles

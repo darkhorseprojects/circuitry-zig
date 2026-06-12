@@ -1,22 +1,46 @@
-circuitry: 0.6
+circuitry: "0.6.1"
 name: repair issue
 about: Make the smallest correct change.
 
 takes:
-  - issue
-  - repository
-  - environment
-  - relevant context
+  $issue:
+    type: text
+  $repository: directory
+  $environment:
+    type: text
+  $relevant_context:
+    type: text
 
-does: |
-  Understand the failure.
-  Inspect only the relevant surface first.
-  Reproduce or localize the issue when useful.
-  Change the least code needed.
-  Run the cheapest checks that increase confidence.
-  Explain the action taken and remaining uncertainty.
+uses:
+  inspect:
+    takes:
+      issue: $issue
+      repository: $repository
+      context: $relevant_context
+    does: |
+      Understand the failure and inspect only the relevant surface first.
+    gives:
+      summary: $summary
+
+  repair:
+    takes:
+      issue: $issue
+      repository: $repository
+      environment: $environment
+      summary: $summary
+    does: |
+      Reproduce or localize the issue when useful.
+      Change the least code needed.
+      Run the cheapest checks that increase confidence.
+      Explain the action taken and remaining uncertainty.
+    gives:
+      patch: $patch
+      checks: $checks
+      explanation: $explanation
 
 gives:
-  - patch
-  - checks
-  - explanation
+  $patch: patch
+  $checks:
+    type: text
+  $explanation:
+    type: text

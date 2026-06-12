@@ -13,11 +13,9 @@ pub fn string(value: *const Value) ?[]const u8 {
     return if (value.* == .string) value.string else null;
 }
 
-pub fn isCircuitry06(value: *const Value) bool {
+pub fn isCircuitry061(value: *const Value) bool {
     switch (value.*) {
-        .string => |s| return std.mem.eql(u8, s, "0.6"),
-        .float => |f| return f == 0.6,
-        .integer => return false,
+        .string => |s| return std.mem.eql(u8, s, "0.6.1"),
         else => return false,
     }
 }

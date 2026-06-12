@@ -1,22 +1,47 @@
-circuitry: 0.6
+circuitry: "0.6.1"
 name: deep search
 about: Spend only the search effort needed to answer with support.
 
-takes:
-  - question
-  - current date
-  - available web access
+zinc:
+  packages:
+    browser: zinc://package/browser@0.6.1
 
-does:
-  sense: |
-    Understand what evidence would actually reduce uncertainty.
-  act: |
-    Search from multiple angles. Prefer primary, recent, and authoritative sources.
-    Read the strongest sources instead of collecting noise.
-  settle: |
-    Stop when the answer is supported enough. Report uncertainty instead of over-searching.
+takes:
+  $question:
+    type: text
+  $current_date: date
+
+uses:
+  search:
+    shape: @browser.shapes.search-web
+    takes:
+      query: $question
+      current_date: $current_date
+    gives:
+      sources: $sources
+
+  read:
+    shape: @browser.shapes.read-sources
+    takes:
+      sources: $sources
+    gives:
+      notes: $notes
+
+  answer:
+    takes:
+      question: $question
+      notes: $notes
+    does: |
+      Compare the notes, answer with citations, and state uncertainty.
+    gives:
+      answer: $answer
+      citations: $citations
+      uncertainty: $uncertainty
 
 gives:
-  - answer
-  - citations
-  - uncertainty
+  $answer:
+    type: text
+  $citations:
+    type: list
+  $uncertainty:
+    type: text

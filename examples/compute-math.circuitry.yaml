@@ -1,0 +1,30 @@
+circuitry: "0.6.1"
+name: compute math
+about: Calculate compound interest from explicit numeric inputs.
+
+takes:
+  $principal:
+    type: number
+  $rate:
+    type: number
+  $years:
+    type: number
+
+uses:
+  compound_interest:
+    takes:
+      principal: $principal
+      rate: $rate
+      years: $years
+    does: |
+      Calculate compound interest.
+      Return the final amount and earned interest.
+    gives:
+      amount: $amount
+      interest: $interest
+
+gives:
+  $amount:
+    type: number
+  $interest:
+    type: number
