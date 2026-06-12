@@ -1,6 +1,7 @@
 const std = @import("std");
 
 pub const value = @import("value.zig");
+pub const version = @import("version.zig");
 pub const shape = @import("shape.zig");
 pub const library = @import("library.zig");
 
@@ -21,6 +22,7 @@ pub const renderCard = shape.renderCard;
 
 test {
     _ = value;
+    _ = version;
     _ = shape;
     _ = library;
 }

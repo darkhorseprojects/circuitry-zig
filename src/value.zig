@@ -1,5 +1,6 @@
 const std = @import("std");
 const serde = @import("serde");
+const version = @import("version.zig");
 
 pub const Value = serde.yaml.Value;
 pub const Mapping = serde.yaml.Mapping;
@@ -13,9 +14,9 @@ pub fn string(value: *const Value) ?[]const u8 {
     return if (value.* == .string) value.string else null;
 }
 
-pub fn isCircuitry061(value: *const Value) bool {
+pub fn isCircuitry062(value: *const Value) bool {
     switch (value.*) {
-        .string => |s| return std.mem.eql(u8, s, "0.6.1"),
+        .string => |s| return std.mem.eql(u8, s, version.circuitry),
         else => return false,
     }
 }

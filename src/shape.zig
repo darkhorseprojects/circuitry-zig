@@ -1,6 +1,7 @@
 const std = @import("std");
 const serde = @import("serde");
 const value = @import("value.zig");
+const version = @import("version.zig");
 
 pub const Value = value.Value;
 
@@ -82,7 +83,6 @@ pub const SystemView = struct {
     uses: []UseEntry,
     gives: []ValueBinding,
     value_refs: [][]const u8,
-    package_refs: [][]const u8,
     diagnostics: []SystemDiagnostic,
 
     pub fn deinit(self: *SystemView) void {
@@ -91,7 +91,6 @@ pub const SystemView = struct {
         self.allocator.free(self.uses);
         freeBindings(self.allocator, self.gives);
         value.freeStrings(self.allocator, self.value_refs);
-        value.freeStrings(self.allocator, self.package_refs);
         for (self.diagnostics) |*diagnostic| diagnostic.deinit();
         self.allocator.free(self.diagnostics);
     }
@@ -165,10 +164,7 @@ pub fn systemView(allocator: std.mem.Allocator, shape: *const Shape) !SystemView
 
     var value_refs_list: std.ArrayList([]const u8) = .empty;
     errdefer freeList(allocator, &value_refs_list);
-    var package_refs_list: std.ArrayList([]const u8) = .empty;
-    errdefer freeList(allocator, &package_refs_list);
     try discoverRefs(allocator, &shape.root, '$', &value_refs_list);
-    try discoverRefs(allocator, &shape.root, '@', &package_refs_list);
 
     var diagnostic_list: std.ArrayList(SystemDiagnostic) = .empty;
     errdefer {
@@ -183,7 +179,6 @@ pub fn systemView(allocator: std.mem.Allocator, shape: *const Shape) !SystemView
         .uses = uses,
         .gives = gives,
         .value_refs = try value_refs_list.toOwnedSlice(allocator),
-        .package_refs = try package_refs_list.toOwnedSlice(allocator),
         .diagnostics = try diagnostic_list.toOwnedSlice(allocator),
     };
 }
@@ -201,8 +196,11 @@ pub fn confirm(allocator: std.mem.Allocator, shape: *const Shape) !Confirmation 
         freeList(allocator, &cautions);
     }
 
-    const version = value.get(&shape.root, "circuitry");
-    if (version == null or !value.isCircuitry061(version.?)) try problems.append(allocator, try allocator.dupe(u8, "Use `circuitry: \"0.6.1\"`."));
+    const version_node = value.get(&shape.root, "circuitry");
+    if (version_node == null or !value.isCircuitry062(version_node.?)) {
+        const msg = try std.fmt.allocPrint(allocator, "Use `circuitry: \"{s}\"`.", .{version.circuitry});
+        try problems.append(allocator, msg);
+    }
     if (value.empty(value.get(&shape.root, "does")) and value.empty(value.get(&shape.root, "uses"))) try problems.append(allocator, try allocator.dupe(u8, "Say what action should be taken with `does` or `uses`."));
     if (value.empty(value.get(&shape.root, "gives"))) try cautions.append(allocator, try allocator.dupe(u8, "Name what the action gives back."));
 

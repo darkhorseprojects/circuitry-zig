@@ -1,16 +1,12 @@
-circuitry: "0.6.1"
+circuitry: "0.6.2"
 name: answer with context
 about: Use given context as explicit inputs, not as ambient memory.
 
 takes:
-  $request:
-    type: text
-  $context:
-    type: text
-  $memory:
-    type: text
-  $environment:
-    type: text
+  $request: text
+  $context: text
+  $memory: text
+  $environment: text
 
 uses:
   answer:
@@ -29,7 +25,5 @@ uses:
       unused_context: $unused_context
 
 gives:
-  $response:
-    type: text
-  $unused_context:
-    type: text
+  $response: text
+  $unused_context: text

@@ -1,10 +1,10 @@
 const std = @import("std");
 const circuitry = @import("circuitry");
 
-test "reads 0.6.1 system shape" {
+test "reads 0.6.2 system shape" {
     const allocator = std.testing.allocator;
     var s = try circuitry.loadText(allocator,
-        \\circuitry: "0.6.1"
+        \\circuitry: "0.6.2"
         \\name: deep search
         \\takes:
         \\  $question: text
@@ -27,16 +27,15 @@ test "reads 0.6.1 system shape" {
     try std.testing.expectEqualStrings("search", c.uses[0]);
 }
 
-test "confirms ready system and surfaces model" {
+test "confirms ready system" {
     const allocator = std.testing.allocator;
     var s = try circuitry.loadText(allocator,
-        \\circuitry: "0.6.1"
+        \\circuitry: "0.6.2"
         \\name: x
         \\takes:
         \\  $question: text
         \\uses:
         \\  draft:
-        \\    model: fast
         \\    takes:
         \\      question: $question
         \\    does: action
@@ -50,23 +49,19 @@ test "confirms ready system and surfaces model" {
     defer result.deinit();
     try std.testing.expect(result.ready);
     try std.testing.expectEqualStrings("$question", result.asks[0]);
-    try std.testing.expectEqualStrings("fast", result.system.uses[0].model.?);
     try std.testing.expectEqualStrings("action", result.system.uses[0].instructions.?);
 }
 
-test "discovers value and package references" {
+test "discovers value references" {
     const allocator = std.testing.allocator;
     var s = try circuitry.loadText(allocator,
-        \\circuitry: "0.6.1"
+        \\circuitry: "0.6.2"
         \\name: x
-        \\zinc:
-        \\  packages:
-        \\    browser: zinc://package/browser@0.6.1
         \\takes:
         \\  $question: text
         \\uses:
         \\  search:
-        \\    shape: @browser.shapes.search-web
+        \\    shape: browser.search-web
         \\    takes:
         \\      query: $question
         \\    gives:
@@ -78,14 +73,12 @@ test "discovers value and package references" {
     var view = try circuitry.systemView(allocator, &s);
     defer view.deinit();
     try std.testing.expectEqual(@as(usize, 2), view.value_refs.len);
-    try std.testing.expectEqual(@as(usize, 1), view.package_refs.len);
-    try std.testing.expectEqualStrings("@browser.shapes.search-web", view.package_refs[0]);
 }
 
 test "diagnoses unresolved values" {
     const allocator = std.testing.allocator;
     var s = try circuitry.loadText(allocator,
-        \\circuitry: "0.6.1"
+        \\circuitry: "0.6.2"
         \\name: broken
         \\uses:
         \\  draft:
@@ -106,7 +99,7 @@ test "diagnoses unresolved values" {
 test "diagnoses duplicate producers and cycles" {
     const allocator = std.testing.allocator;
     var s = try circuitry.loadText(allocator,
-        \\circuitry: "0.6.1"
+        \\circuitry: "0.6.2"
         \\name: broken
         \\uses:
         \\  a:

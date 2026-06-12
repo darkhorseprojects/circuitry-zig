@@ -40,7 +40,7 @@ fn confirm(io: std.Io, allocator: std.mem.Allocator, path: []const u8) !void {
     try stdout(io, text);
     try printList(io, "fix", result.problems);
     try printList(io, "notice", result.cautions);
-    try printList(io, "Zinc should collect", result.asks);
+    try printList(io, "takes", result.asks);
     try stdout(io, if (result.ready) "\nready\n" else "\nnot ready\n");
     if (!result.ready) std.process.exit(1);
 }

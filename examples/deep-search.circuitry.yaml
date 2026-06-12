@@ -1,29 +1,26 @@
-circuitry: "0.6.1"
+circuitry: "0.6.2"
 name: deep search
 about: Spend only the search effort needed to answer with support.
 
-zinc:
-  packages:
-    browser: zinc://package/browser@0.6.1
-
 takes:
-  $question:
-    type: text
+  $question: text
   $current_date: date
 
 uses:
   search:
-    shape: @browser.shapes.search-web
     takes:
       query: $question
       current_date: $current_date
+    does: |
+      Find sources relevant to the question.
     gives:
       sources: $sources
 
   read:
-    shape: @browser.shapes.read-sources
     takes:
       sources: $sources
+    does: |
+      Read the sources and keep only answer-bearing notes.
     gives:
       notes: $notes
 
@@ -39,9 +36,6 @@ uses:
       uncertainty: $uncertainty
 
 gives:
-  $answer:
-    type: text
-  $citations:
-    type: list
-  $uncertainty:
-    type: text
+  $answer: text
+  $citations: list
+  $uncertainty: text

@@ -2,32 +2,29 @@
 
 Zig library and CLI for reading, confirming, and browsing Circuitry files.
 
-Circuitry is YAML for action systems. Zinc is the host that runs them.
+Circuitry is YAML for action systems.
 
 ```yaml
-circuitry: "0.6.1"
-name: cited research answer
+circuitry: "0.6.2"
+name: cited answer
 
 takes:
-  $question:
-    type: text
+  $question: text
+  $notes: text
 
 uses:
   draft:
-    model: fast
     takes:
       question: $question
+      notes: $notes
     does: |
-      Draft a clear answer.
+      Draft a clear answer from the notes.
     gives:
       answer: $answer
 
 gives:
-  $answer:
-    type: text
+  $answer: text
 ```
-
-This package is not a runtime, compiler, or graph engine. It lets Zinc and other Zig hosts work with `.circuitry.yaml` artifacts directly.
 
 ## Commands
 
@@ -56,16 +53,6 @@ gives
 
 Circuitry also owns `$value` references.
 
-Zinc owns:
-
-```text
-zinc
-@package references
-model
-```
-
-The parsed YAML root preserves Zinc fields and references. `model` is surfaced on `uses` entries but not interpreted.
-
 ## System view
 
 The library exposes `systemView`, which extracts:
@@ -74,5 +61,4 @@ The library exposes `systemView`, which extracts:
 - `uses` entries
 - top-level `$gives`
 - `$` value references
-- `@` package references
 - diagnostics for unresolved values, duplicate producers, and cycles

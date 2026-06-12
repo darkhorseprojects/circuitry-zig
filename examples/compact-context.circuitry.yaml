@@ -1,12 +1,10 @@
-circuitry: "0.6.1"
+circuitry: "0.6.2"
 name: compact context
 about: Reduce future energy by carrying only the state that matters.
 
 takes:
-  $history:
-    type: text
-  $current_aim:
-    type: text
+  $history: text
+  $current_aim: text
 
 uses:
   compact:
@@ -21,5 +19,4 @@ uses:
       compacted_context: $compacted_context
 
 gives:
-  $compacted_context:
-    type: text
+  $compacted_context: text
