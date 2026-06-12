@@ -89,6 +89,7 @@ test "normalizes document facts" {
     try std.testing.expectEqualStrings("Answer briefly.", doc.parts[0].instructions.?);
     try std.testing.expectEqualStrings("question", doc.parts[0].takes[0].local.?);
     try std.testing.expectEqualStrings("$question", doc.parts[0].takes[0].value);
+    try std.testing.expectEqual(null, doc.parts[0].takes[0].type_label);
     try std.testing.expectEqualStrings("answer", doc.parts[0].gives[0].local.?);
     try std.testing.expectEqualStrings("$answer", doc.parts[0].gives[0].value);
     try std.testing.expectEqualStrings("text", doc.parts[0].gives[0].type_label.?);

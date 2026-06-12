@@ -460,7 +460,7 @@ fn localBindings(allocator: std.mem.Allocator, maybe: ?*const Value) ![]ValueBin
     if (v.* != .mapping) return out.toOwnedSlice(allocator);
     var it = v.mapping.iterator();
     while (it.next()) |entry| {
-        if (bindingValue(entry.value_ptr)) |system_value| try out.append(allocator, try makeBinding(allocator, entry.key_ptr.*, system_value, bindingType(entry.value_ptr)));
+        if (bindingValue(entry.value_ptr)) |system_value| try out.append(allocator, try makeBinding(allocator, entry.key_ptr.*, system_value, localBindingType(entry.value_ptr)));
     }
     return out.toOwnedSlice(allocator);
 }
@@ -644,6 +644,12 @@ fn bindingType(v: *const Value) ?[]const u8 {
         return if (t.* == .string) t.string else null;
     }
     return null;
+}
+
+fn localBindingType(v: *const Value) ?[]const u8 {
+    if (v.* != .mapping) return null;
+    const t = value.get(v, "type") orelse return null;
+    return if (t.* == .string) t.string else null;
 }
 
 fn bindingValue(v: *const Value) ?[]const u8 {
