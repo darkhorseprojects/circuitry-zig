@@ -62,6 +62,7 @@ test "normalizes document facts" {
         \\  $question: text
         \\uses:
         \\  answer:
+        \\    shape: responses.shapes.short_answer
         \\    model: default
         \\    takes:
         \\      question: $question
@@ -85,6 +86,7 @@ test "normalizes document facts" {
     try std.testing.expectEqual(circuitry.Direction.takes, doc.takes[0].direction);
     try std.testing.expectEqual(@as(usize, 1), doc.parts.len);
     try std.testing.expectEqualStrings("answer", doc.parts[0].name);
+    try std.testing.expectEqualStrings("responses.shapes.short_answer", doc.parts[0].shape.?);
     try std.testing.expectEqualStrings("default", doc.parts[0].model.?);
     try std.testing.expectEqualStrings("Answer briefly.", doc.parts[0].instructions.?);
     try std.testing.expectEqualStrings("question", doc.parts[0].takes[0].local.?);
@@ -134,7 +136,7 @@ const MaterializerCounts = struct {
     }
 };
 
-test "builds stable document and fact keys" {
+test "builds stable document ids" {
     const allocator = std.testing.allocator;
     const first = try circuitry.stableDocId(allocator, "name: x\n");
     defer allocator.free(first);
@@ -142,18 +144,6 @@ test "builds stable document and fact keys" {
     defer allocator.free(second);
     try std.testing.expectEqualStrings(first, second);
     try std.testing.expect(std.mem.startsWith(u8, first, "doc_"));
-
-    const part = try circuitry.partKey(allocator, "answer");
-    defer allocator.free(part);
-    try std.testing.expectEqualStrings("part:answer", part);
-
-    const val = try circuitry.valueKey(allocator, .takes, "$question");
-    defer allocator.free(val);
-    try std.testing.expectEqualStrings("value:takes:$question", val);
-
-    const binding = try circuitry.bindingKey(allocator, "answer", .gives, "answer");
-    defer allocator.free(binding);
-    try std.testing.expectEqualStrings("binding:answer:gives:answer", binding);
 }
 
 test "materializes normalized facts" {
@@ -210,9 +200,29 @@ test "diagnoses unresolved values" {
     defer result.deinit();
     try std.testing.expect(!result.ready);
     try std.testing.expectEqualStrings("unresolved-value", result.system.diagnostics[0].kind);
+    try std.testing.expectEqualStrings("$notes", result.system.diagnostics[0].values[0]);
+    try std.testing.expectEqualStrings("draft", result.system.diagnostics[0].uses[0]);
 }
 
-test "diagnoses duplicate producers and cycles" {
+test "normalizes bare top-level value names" {
+    const allocator = std.testing.allocator;
+    var s = try circuitry.loadText(allocator,
+        \\circuitry: "0.6.4"
+        \\name: bare names
+        \\takes:
+        \\  Question Text: text
+        \\does: answer
+        \\gives:
+        \\  final-answer: text
+    );
+    defer s.deinit();
+    var doc = try circuitry.normalize(allocator, &s);
+    defer doc.deinit();
+    try std.testing.expectEqualStrings("$question_text", doc.takes[0].name);
+    try std.testing.expectEqualStrings("$final-answer", doc.gives[0].name);
+}
+
+test "diagnoses duplicate producers and arbitrary cycles" {
     const allocator = std.testing.allocator;
     var s = try circuitry.loadText(allocator,
         \\circuitry: "0.6.4"
@@ -220,7 +230,7 @@ test "diagnoses duplicate producers and cycles" {
         \\uses:
         \\  a:
         \\    takes:
-        \\      input: $b
+        \\      input: $c
         \\    gives:
         \\      output: $a
         \\      other: $same
@@ -230,6 +240,11 @@ test "diagnoses duplicate producers and cycles" {
         \\    gives:
         \\      output: $b
         \\      other: $same
+        \\  c:
+        \\    takes:
+        \\      input: $b
+        \\    gives:
+        \\      output: $c
         \\gives:
         \\  $a: text
     );
@@ -239,8 +254,15 @@ test "diagnoses duplicate producers and cycles" {
     var saw_duplicate = false;
     var saw_cycle = false;
     for (result.system.diagnostics) |diagnostic| {
-        if (std.mem.eql(u8, diagnostic.kind, "duplicate-producer")) saw_duplicate = true;
-        if (std.mem.eql(u8, diagnostic.kind, "cycle")) saw_cycle = true;
+        if (std.mem.eql(u8, diagnostic.kind, "duplicate-producer")) {
+            saw_duplicate = true;
+            try std.testing.expectEqualStrings("$same", diagnostic.values[0]);
+            try std.testing.expectEqual(@as(usize, 2), diagnostic.uses.len);
+        }
+        if (std.mem.eql(u8, diagnostic.kind, "cycle")) {
+            saw_cycle = true;
+            try std.testing.expect(diagnostic.uses.len >= 4);
+        }
     }
     try std.testing.expect(saw_duplicate);
     try std.testing.expect(saw_cycle);

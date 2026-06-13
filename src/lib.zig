@@ -23,9 +23,6 @@ pub const card = shape.card;
 pub const confirm = shape.confirm;
 pub const normalize = shape.normalize;
 pub const stableDocId = shape.stableDocId;
-pub const partKey = shape.partKey;
-pub const valueKey = shape.valueKey;
-pub const bindingKey = shape.bindingKey;
 pub const materialize = shape.materialize;
 pub const renderCard = shape.renderCard;
 

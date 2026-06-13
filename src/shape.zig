@@ -70,10 +70,14 @@ pub const SystemDiagnostic = struct {
     allocator: std.mem.Allocator,
     kind: []const u8,
     message: []const u8,
+    values: [][]const u8,
+    uses: [][]const u8,
 
     fn deinit(self: *SystemDiagnostic) void {
         self.allocator.free(self.kind);
         self.allocator.free(self.message);
+        value.freeStrings(self.allocator, self.values);
+        value.freeStrings(self.allocator, self.uses);
     }
 };
 
@@ -335,18 +339,6 @@ pub fn stableDocId(allocator: std.mem.Allocator, source: []const u8) ![]u8 {
     return std.fmt.allocPrint(allocator, "doc_{s}", .{hex[0..24]});
 }
 
-pub fn partKey(allocator: std.mem.Allocator, part_name: []const u8) ![]u8 {
-    return std.fmt.allocPrint(allocator, "part:{s}", .{part_name});
-}
-
-pub fn valueKey(allocator: std.mem.Allocator, direction: Direction, value_name: []const u8) ![]u8 {
-    return std.fmt.allocPrint(allocator, "value:{s}:{s}", .{ @tagName(direction), value_name });
-}
-
-pub fn bindingKey(allocator: std.mem.Allocator, part_name: []const u8, side: Direction, local_or_value: []const u8) ![]u8 {
-    return std.fmt.allocPrint(allocator, "binding:{s}:{s}:{s}", .{ part_name, @tagName(side), local_or_value });
-}
-
 pub fn materialize(normalized: *const NormalizedDoc, visitor: Materializer) !void {
     try visitor.doc(visitor.context, normalized);
     for (normalized.takes) |item| try visitor.value(visitor.context, item);
@@ -404,11 +396,11 @@ fn topLevelBindings(allocator: std.mem.Allocator, maybe: ?*const Value) ![]Value
     errdefer freeBindings(allocator, out.items);
     const v = maybe orelse return out.toOwnedSlice(allocator);
     switch (v.*) {
-        .string => |s| if (s.len != 0) try out.append(allocator, try makeBinding(allocator, null, ensureValueName(allocator, s), null)),
-        .sequence => |items| for (items) |*item| if (item.* == .string) try out.append(allocator, try makeBinding(allocator, null, ensureValueName(allocator, item.string), null)),
+        .string => |s| if (s.len != 0) try appendTopLevelBinding(allocator, &out, s, null),
+        .sequence => |items| for (items) |*item| if (item.* == .string) try appendTopLevelBinding(allocator, &out, item.string, null),
         .mapping => |*map| {
             var it = map.iterator();
-            while (it.next()) |entry| try out.append(allocator, try makeBinding(allocator, null, ensureValueName(allocator, entry.key_ptr.*), bindingType(entry.value_ptr)));
+            while (it.next()) |entry| try appendTopLevelBinding(allocator, &out, entry.key_ptr.*, bindingType(entry.value_ptr));
         },
         else => {},
     }
@@ -520,6 +512,8 @@ fn cloneDiagnostics(allocator: std.mem.Allocator, diagnostics_in: []const System
         .allocator = allocator,
         .kind = try allocator.dupe(u8, diagnostic.kind),
         .message = try allocator.dupe(u8, diagnostic.message),
+        .values = try cloneStringSlice(allocator, diagnostic.values),
+        .uses = try cloneStringSlice(allocator, diagnostic.uses),
     });
     return out.toOwnedSlice(allocator);
 }
@@ -555,35 +549,38 @@ fn collectDiagnostics(allocator: std.mem.Allocator, takes: []const ValueBinding,
         for (entry.takes) |binding| {
             if (!isInjected(takes, binding.value) and producerCount(uses, binding.value) == 0) {
                 const msg = try std.fmt.allocPrint(allocator, "{s} takes unresolved value {s}.", .{ entry.name, binding.value });
-                try appendDiagnostic(allocator, out, "unresolved-value", msg);
+                try appendDiagnostic(allocator, out, "unresolved-value", msg, &.{binding.value}, &.{entry.name});
             }
         }
     }
     for (gives) |binding| {
         if (!isInjected(takes, binding.value) and producerCount(uses, binding.value) == 0) {
             const msg = try std.fmt.allocPrint(allocator, "Top-level gives asks for unresolved value {s}.", .{binding.value});
-            try appendDiagnostic(allocator, out, "unresolved-value", msg);
+            try appendDiagnostic(allocator, out, "unresolved-value", msg, &.{binding.value}, &.{});
         }
     }
+    var duplicate_values: std.StringHashMap(void) = .init(allocator);
+    defer duplicate_values.deinit();
     for (uses) |entry| {
         for (entry.gives) |binding| {
-            if (producerCount(uses, binding.value) > 1) {
-                const msg = try std.fmt.allocPrint(allocator, "{s} is produced by multiple uses entries.", .{binding.value});
-                try appendDiagnostic(allocator, out, "duplicate-producer", msg);
-                break;
+            if (producerCount(uses, binding.value) > 1 and !duplicate_values.contains(binding.value)) {
+                try duplicate_values.put(binding.value, {});
+                const producer_names = try producersForValue(allocator, uses, binding.value);
+                defer value.freeStrings(allocator, producer_names);
+                const joined = try joinStrings(allocator, producer_names, ", ");
+                defer allocator.free(joined);
+                const msg = try std.fmt.allocPrint(allocator, "{s} is produced by multiple uses entries: {s}.", .{ binding.value, joined });
+                try appendDiagnostic(allocator, out, "duplicate-producer", msg, &.{binding.value}, producer_names);
             }
         }
     }
-    if (hasCycle(uses)) try appendDiagnostic(allocator, out, "cycle", try allocator.dupe(u8, "Cycle between uses entries."));
-}
-
-fn hasCycle(uses: []const UseEntry) bool {
-    for (uses) |a| for (a.takes) |take_a| for (uses) |b| {
-        if (std.mem.eql(u8, a.name, b.name)) continue;
-        if (!produces(b, take_a.value)) continue;
-        for (b.takes) |take_b| if (produces(a, take_b.value)) return true;
-    };
-    return false;
+    if (try findCycle(allocator, uses)) |cycle| {
+        defer value.freeStrings(allocator, cycle);
+        const joined = try joinStrings(allocator, cycle, " -> ");
+        defer allocator.free(joined);
+        const msg = try std.fmt.allocPrint(allocator, "Cycle between uses entries: {s}.", .{joined});
+        try appendDiagnostic(allocator, out, "cycle", msg, &.{}, cycle);
+    }
 }
 
 fn produces(entry: UseEntry, name: []const u8) bool {
@@ -606,9 +603,86 @@ fn isInjected(takes: []const ValueBinding, name: []const u8) bool {
     return false;
 }
 
-fn appendDiagnostic(allocator: std.mem.Allocator, out: *std.ArrayList(SystemDiagnostic), kind: []const u8, message: []const u8) !void {
+fn producersForValue(allocator: std.mem.Allocator, uses: []const UseEntry, name: []const u8) ![][]const u8 {
+    var out: std.ArrayList([]const u8) = .empty;
+    errdefer freeList(allocator, &out);
+    for (uses) |entry| if (produces(entry, name)) try out.append(allocator, try allocator.dupe(u8, entry.name));
+    return out.toOwnedSlice(allocator);
+}
+
+fn findCycle(allocator: std.mem.Allocator, uses: []const UseEntry) !?[][]const u8 {
+    const visiting = try allocator.alloc(bool, uses.len);
+    defer allocator.free(visiting);
+    const visited = try allocator.alloc(bool, uses.len);
+    defer allocator.free(visited);
+    @memset(visiting, false);
+    @memset(visited, false);
+    var stack: std.ArrayList(usize) = .empty;
+    defer stack.deinit(allocator);
+
+    for (uses, 0..) |_, index| {
+        if (try visitCycle(allocator, uses, index, visiting, visited, &stack)) |cycle| return cycle;
+    }
+    return null;
+}
+
+fn visitCycle(allocator: std.mem.Allocator, uses: []const UseEntry, index: usize, visiting: []bool, visited: []bool, stack: *std.ArrayList(usize)) !?[][]const u8 {
+    if (visiting[index]) {
+        var start: usize = 0;
+        while (start < stack.items.len and stack.items[start] != index) start += 1;
+        var out: std.ArrayList([]const u8) = .empty;
+        errdefer freeList(allocator, &out);
+        for (stack.items[start..]) |item| try out.append(allocator, try allocator.dupe(u8, uses[item].name));
+        try out.append(allocator, try allocator.dupe(u8, uses[index].name));
+        return try out.toOwnedSlice(allocator);
+    }
+    if (visited[index]) return null;
+
+    visiting[index] = true;
+    try stack.append(allocator, index);
+    for (uses[index].takes) |binding| {
+        for (uses, 0..) |candidate, candidate_index| {
+            if (candidate_index == index) continue;
+            if (!produces(candidate, binding.value)) continue;
+            if (try visitCycle(allocator, uses, candidate_index, visiting, visited, stack)) |cycle| return cycle;
+        }
+    }
+    _ = stack.pop();
+    visiting[index] = false;
+    visited[index] = true;
+    return null;
+}
+
+fn joinStrings(allocator: std.mem.Allocator, items: []const []const u8, separator: []const u8) ![]u8 {
+    var out: std.ArrayList(u8) = .empty;
+    errdefer out.deinit(allocator);
+    for (items, 0..) |item, index| {
+        if (index != 0) try out.appendSlice(allocator, separator);
+        try out.appendSlice(allocator, item);
+    }
+    return out.toOwnedSlice(allocator);
+}
+
+fn cloneStringSlice(allocator: std.mem.Allocator, items: []const []const u8) ![][]const u8 {
+    var out: std.ArrayList([]const u8) = .empty;
+    errdefer freeList(allocator, &out);
+    for (items) |item| try out.append(allocator, try allocator.dupe(u8, item));
+    return out.toOwnedSlice(allocator);
+}
+
+fn appendDiagnostic(allocator: std.mem.Allocator, out: *std.ArrayList(SystemDiagnostic), kind: []const u8, message: []const u8, values: []const []const u8, uses: []const []const u8) !void {
     errdefer allocator.free(message);
-    try out.append(allocator, .{ .allocator = allocator, .kind = try allocator.dupe(u8, kind), .message = message });
+    const cloned_values = try cloneStringSlice(allocator, values);
+    errdefer value.freeStrings(allocator, cloned_values);
+    const cloned_uses = try cloneStringSlice(allocator, uses);
+    errdefer value.freeStrings(allocator, cloned_uses);
+    try out.append(allocator, .{
+        .allocator = allocator,
+        .kind = try allocator.dupe(u8, kind),
+        .message = message,
+        .values = cloned_values,
+        .uses = cloned_uses,
+    });
 }
 
 fn discoverRefs(allocator: std.mem.Allocator, v: *const Value, marker: u8, out: *std.ArrayList([]const u8)) !void {
@@ -661,6 +735,12 @@ fn bindingValue(v: *const Value) ?[]const u8 {
     return null;
 }
 
+fn appendTopLevelBinding(allocator: std.mem.Allocator, out: *std.ArrayList(ValueBinding), raw_name: []const u8, type_label: ?[]const u8) !void {
+    const system_value = try ensureValueName(allocator, raw_name);
+    defer allocator.free(system_value);
+    try out.append(allocator, try makeBinding(allocator, null, system_value, type_label));
+}
+
 fn makeBinding(allocator: std.mem.Allocator, local: ?[]const u8, system_value: []const u8, type_label: ?[]const u8) !ValueBinding {
     return .{
         .local = if (local) |name| try allocator.dupe(u8, name) else null,
@@ -669,9 +749,35 @@ fn makeBinding(allocator: std.mem.Allocator, local: ?[]const u8, system_value: [
     };
 }
 
-fn ensureValueName(allocator: std.mem.Allocator, name: []const u8) []const u8 {
-    _ = allocator;
-    return if (isValueName(name)) name else name;
+fn ensureValueName(allocator: std.mem.Allocator, name: []const u8) ![]const u8 {
+    if (isValueName(name)) return try allocator.dupe(u8, name);
+    const local = try localName(allocator, name);
+    defer allocator.free(local);
+    return std.fmt.allocPrint(allocator, "${s}", .{local});
+}
+
+fn localName(allocator: std.mem.Allocator, name: []const u8) ![]const u8 {
+    var out: std.ArrayList(u8) = .empty;
+    errdefer out.deinit(allocator);
+    var previous_was_separator = false;
+    for (name) |byte| {
+        const normalized = switch (byte) {
+            'A'...'Z' => byte + 32,
+            'a'...'z', '0'...'9', '_', '.', '-' => byte,
+            '$', '@' => continue,
+            else => '_',
+        };
+        if (normalized == '_') {
+            if (out.items.len == 0 or previous_was_separator) continue;
+            previous_was_separator = true;
+        } else {
+            previous_was_separator = false;
+        }
+        try out.append(allocator, normalized);
+    }
+    while (out.items.len != 0 and out.items[out.items.len - 1] == '_') _ = out.pop();
+    if (out.items.len == 0) try out.appendSlice(allocator, "value");
+    return out.toOwnedSlice(allocator);
 }
 
 fn stringDup(allocator: std.mem.Allocator, maybe: ?*const Value) !?[]const u8 {
@@ -726,5 +832,10 @@ fn isValueName(s: []const u8) bool {
     return isMarkedRef(s, '$');
 }
 fn isMarkedRef(s: []const u8, marker: u8) bool {
-    return s.len > 1 and s[0] == marker;
+    if (s.len <= 1 or s[0] != marker) return false;
+    for (s[1..]) |byte| switch (byte) {
+        'A'...'Z', 'a'...'z', '0'...'9', '_', '.', '-' => {},
+        else => return false,
+    };
+    return true;
 }
