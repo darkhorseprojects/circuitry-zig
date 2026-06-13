@@ -204,22 +204,28 @@ test "diagnoses unresolved values" {
     try std.testing.expectEqualStrings("draft", result.system.diagnostics[0].uses[0]);
 }
 
-test "normalizes bare top-level value names" {
+test "normalizes bare top-level value names and ignores invalid local refs" {
     const allocator = std.testing.allocator;
     var s = try circuitry.loadText(allocator,
         \\circuitry: "0.6.4"
         \\name: bare names
         \\takes:
         \\  Question Text: text
-        \\does: answer
+        \\uses:
+        \\  draft:
+        \\    takes:
+        \\      question: question without marker
+        \\    gives:
+        \\      answer: $answer
         \\gives:
-        \\  final-answer: text
+        \\  final answer: text
     );
     defer s.deinit();
     var doc = try circuitry.normalize(allocator, &s);
     defer doc.deinit();
     try std.testing.expectEqualStrings("$question_text", doc.takes[0].name);
-    try std.testing.expectEqualStrings("$final-answer", doc.gives[0].name);
+    try std.testing.expectEqualStrings("$final_answer", doc.gives[0].name);
+    try std.testing.expectEqual(@as(usize, 0), doc.parts[0].takes.len);
 }
 
 test "diagnoses duplicate producers and arbitrary cycles" {
@@ -257,11 +263,17 @@ test "diagnoses duplicate producers and arbitrary cycles" {
         if (std.mem.eql(u8, diagnostic.kind, "duplicate-producer")) {
             saw_duplicate = true;
             try std.testing.expectEqualStrings("$same", diagnostic.values[0]);
-            try std.testing.expectEqual(@as(usize, 2), diagnostic.uses.len);
+            try std.testing.expectEqualStrings("a", diagnostic.uses[0]);
+            try std.testing.expectEqualStrings("b", diagnostic.uses[1]);
+            try std.testing.expectEqualStrings("$same is produced by multiple uses entries: a, b.", diagnostic.message);
         }
         if (std.mem.eql(u8, diagnostic.kind, "cycle")) {
             saw_cycle = true;
-            try std.testing.expect(diagnostic.uses.len >= 4);
+            try std.testing.expectEqualStrings("a", diagnostic.uses[0]);
+            try std.testing.expectEqualStrings("c", diagnostic.uses[1]);
+            try std.testing.expectEqualStrings("b", diagnostic.uses[2]);
+            try std.testing.expectEqualStrings("a", diagnostic.uses[3]);
+            try std.testing.expectEqualStrings("Cycle between uses entries: a -> c -> b -> a.", diagnostic.message);
         }
     }
     try std.testing.expect(saw_duplicate);
