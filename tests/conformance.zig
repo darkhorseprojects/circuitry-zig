@@ -98,6 +98,56 @@ test "normalizes document facts" {
     try std.testing.expectEqual(@as(usize, 0), doc.diagnostics.len);
 }
 
+test "renders stable normalized material" {
+    const allocator = std.testing.allocator;
+    var s = try circuitry.loadText(allocator,
+        \\circuitry: "0.6.4"
+        \\name: answer
+        \\takes:
+        \\  $question: text
+        \\uses:
+        \\  answer:
+        \\    model: default
+        \\    takes:
+        \\      question: $question
+        \\    does: Answer briefly.
+        \\    gives:
+        \\      answer: $answer
+        \\gives:
+        \\  $answer: text
+    );
+    defer s.deinit();
+    const material = try circuitry.renderNormalized(allocator, &s);
+    defer allocator.free(material);
+    try std.testing.expectEqualStrings("{\"diagnostics\":[],\"gives\":[{\"direction\":\"gives\",\"name\":\"$answer\",\"type\":\"text\"}],\"name\":\"answer\",\"parts\":[{\"gives\":[{\"local\":\"answer\",\"value\":\"$answer\"}],\"instructions\":\"Answer briefly.\",\"model\":\"default\",\"name\":\"answer\",\"takes\":[{\"local\":\"question\",\"value\":\"$question\"}]}],\"takes\":[{\"direction\":\"takes\",\"name\":\"$question\",\"type\":\"text\"}],\"version\":\"0.6.4\"}\n", material);
+}
+
+
+test "renders stable normalized part material" {
+    const allocator = std.testing.allocator;
+    var s = try circuitry.loadText(allocator,
+        \\circuitry: "0.6.4"
+        \\name: answer
+        \\about: short
+        \\takes:
+        \\  $question: text
+        \\uses:
+        \\  answer:
+        \\    shape: responses.short
+        \\    takes:
+        \\      question: $question
+        \\    does: Answer briefly.
+        \\    gives:
+        \\      answer: $answer
+        \\gives:
+        \\  $answer: text
+    );
+    defer s.deinit();
+    const material = try circuitry.renderNormalizedPart(allocator, &s, "answer");
+    defer allocator.free(material);
+    try std.testing.expectEqualStrings("{\"about\":\"short\",\"part\":{\"gives\":[{\"local\":\"answer\",\"value\":\"$answer\"}],\"instructions\":\"Answer briefly.\",\"name\":\"answer\",\"shape\":\"responses.short\",\"takes\":[{\"local\":\"question\",\"value\":\"$question\"}]},\"shape\":\"answer\",\"version\":\"0.6.4\"}\n", material);
+}
+
 const MaterializerCounts = struct {
     docs: usize = 0,
     values: usize = 0,

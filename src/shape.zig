@@ -339,6 +339,42 @@ pub fn stableDocId(allocator: std.mem.Allocator, source: []const u8) ![]u8 {
     return std.fmt.allocPrint(allocator, "doc_{s}", .{hex[0..24]});
 }
 
+pub fn renderNormalized(allocator: std.mem.Allocator, shape: *const Shape) ![]u8 {
+    var doc = try normalize(allocator, shape);
+    defer doc.deinit();
+    return renderNormalizedDoc(allocator, &doc);
+}
+
+pub fn renderNormalizedDoc(allocator: std.mem.Allocator, doc: *const NormalizedDoc) ![]u8 {
+    var out: std.ArrayList(u8) = .empty;
+    errdefer out.deinit(allocator);
+    try appendDocMaterial(allocator, &out, doc);
+    try out.append(allocator, '\n');
+    return out.toOwnedSlice(allocator);
+}
+
+pub fn renderNormalizedPart(allocator: std.mem.Allocator, shape: *const Shape, part_name: []const u8) ![]u8 {
+    var doc = try normalize(allocator, shape);
+    defer doc.deinit();
+    return renderNormalizedPartDoc(allocator, &doc, part_name);
+}
+
+pub fn renderNormalizedPartDoc(allocator: std.mem.Allocator, doc: *const NormalizedDoc, part_name: []const u8) ![]u8 {
+    const part = findNormalizedPart(doc, part_name) orelse return error.NormalizedPartNotFound;
+    var out: std.ArrayList(u8) = .empty;
+    errdefer out.deinit(allocator);
+    try out.append(allocator, '{');
+    var first = true;
+    if (doc.about) |about| try appendStringField(allocator, &out, &first, "about", about);
+    try appendFieldName(allocator, &out, &first, "part");
+    try appendPartMaterial(allocator, &out, part);
+    try appendStringField(allocator, &out, &first, "shape", doc.name);
+    try appendStringField(allocator, &out, &first, "version", doc.version);
+    try out.append(allocator, '}');
+    try out.append(allocator, '\n');
+    return out.toOwnedSlice(allocator);
+}
+
 pub fn materialize(normalized: *const NormalizedDoc, visitor: Materializer) !void {
     try visitor.doc(visitor.context, normalized);
     for (normalized.takes) |item| try visitor.value(visitor.context, item);
@@ -389,6 +425,125 @@ pub fn renderCard(allocator: std.mem.Allocator, c: *const ActionCard) ![]u8 {
     try renderNames(allocator, &out, "does", c.does);
     try renderNames(allocator, &out, "gives", c.gives);
     return out.toOwnedSlice(allocator);
+}
+
+fn appendDocMaterial(allocator: std.mem.Allocator, out: *std.ArrayList(u8), doc: *const NormalizedDoc) !void {
+    try out.append(allocator, '{');
+    var first = true;
+    if (doc.about) |about| try appendStringField(allocator, out, &first, "about", about);
+    try appendFieldName(allocator, out, &first, "diagnostics");
+    try out.append(allocator, '[');
+    for (doc.diagnostics, 0..) |diagnostic, i| {
+        if (i != 0) try out.append(allocator, ',');
+        try appendDiagnosticMaterial(allocator, out, diagnostic);
+    }
+    try out.append(allocator, ']');
+    try appendFieldName(allocator, out, &first, "gives");
+    try appendValuesMaterial(allocator, out, doc.gives);
+    try appendStringField(allocator, out, &first, "name", doc.name);
+    try appendFieldName(allocator, out, &first, "parts");
+    try out.append(allocator, '[');
+    for (doc.parts, 0..) |part, i| {
+        if (i != 0) try out.append(allocator, ',');
+        try appendPartMaterial(allocator, out, &part);
+    }
+    try out.append(allocator, ']');
+    try appendFieldName(allocator, out, &first, "takes");
+    try appendValuesMaterial(allocator, out, doc.takes);
+    try appendStringField(allocator, out, &first, "version", doc.version);
+    try out.append(allocator, '}');
+}
+
+fn appendValuesMaterial(allocator: std.mem.Allocator, out: *std.ArrayList(u8), values: []const NormalizedValue) !void {
+    try out.append(allocator, '[');
+    for (values, 0..) |item, i| {
+        if (i != 0) try out.append(allocator, ',');
+        try out.append(allocator, '{');
+        var first = true;
+        try appendStringField(allocator, out, &first, "direction", @tagName(item.direction));
+        try appendStringField(allocator, out, &first, "name", item.name);
+        if (item.type_label) |label| try appendStringField(allocator, out, &first, "type", label);
+        try out.append(allocator, '}');
+    }
+    try out.append(allocator, ']');
+}
+
+fn appendPartMaterial(allocator: std.mem.Allocator, out: *std.ArrayList(u8), part: *const NormalizedPart) !void {
+    try out.append(allocator, '{');
+    var first = true;
+    try appendFieldName(allocator, out, &first, "gives");
+    try appendBindingsMaterial(allocator, out, part.gives);
+    if (part.instructions) |instructions| try appendStringField(allocator, out, &first, "instructions", instructions);
+    if (part.model) |model| try appendStringField(allocator, out, &first, "model", model);
+    try appendStringField(allocator, out, &first, "name", part.name);
+    if (part.shape) |shape_ref| try appendStringField(allocator, out, &first, "shape", shape_ref);
+    try appendFieldName(allocator, out, &first, "takes");
+    try appendBindingsMaterial(allocator, out, part.takes);
+    try out.append(allocator, '}');
+}
+
+fn appendBindingsMaterial(allocator: std.mem.Allocator, out: *std.ArrayList(u8), bindings: []const NormalizedBinding) !void {
+    try out.append(allocator, '[');
+    for (bindings, 0..) |binding, i| {
+        if (i != 0) try out.append(allocator, ',');
+        try out.append(allocator, '{');
+        var first = true;
+        if (binding.local) |local| try appendStringField(allocator, out, &first, "local", local);
+        if (binding.type_label) |label| try appendStringField(allocator, out, &first, "type", label);
+        try appendStringField(allocator, out, &first, "value", binding.value);
+        try out.append(allocator, '}');
+    }
+    try out.append(allocator, ']');
+}
+
+fn appendDiagnosticMaterial(allocator: std.mem.Allocator, out: *std.ArrayList(u8), diagnostic: SystemDiagnostic) !void {
+    try out.append(allocator, '{');
+    var first = true;
+    try appendStringField(allocator, out, &first, "kind", diagnostic.kind);
+    try appendStringField(allocator, out, &first, "message", diagnostic.message);
+    try appendFieldName(allocator, out, &first, "uses");
+    try appendStringArray(allocator, out, diagnostic.uses);
+    try appendFieldName(allocator, out, &first, "values");
+    try appendStringArray(allocator, out, diagnostic.values);
+    try out.append(allocator, '}');
+}
+
+fn appendStringArray(allocator: std.mem.Allocator, out: *std.ArrayList(u8), items: []const []const u8) !void {
+    try out.append(allocator, '[');
+    for (items, 0..) |item, i| {
+        if (i != 0) try out.append(allocator, ',');
+        try appendJsonString(allocator, out, item);
+    }
+    try out.append(allocator, ']');
+}
+
+fn appendStringField(allocator: std.mem.Allocator, out: *std.ArrayList(u8), first: *bool, key: []const u8, string: []const u8) !void {
+    try appendFieldName(allocator, out, first, key);
+    try appendJsonString(allocator, out, string);
+}
+
+fn appendFieldName(allocator: std.mem.Allocator, out: *std.ArrayList(u8), first: *bool, key: []const u8) !void {
+    if (first.*) first.* = false else try out.append(allocator, ',');
+    try appendJsonString(allocator, out, key);
+    try out.append(allocator, ':');
+}
+
+fn appendJsonString(allocator: std.mem.Allocator, out: *std.ArrayList(u8), string: []const u8) !void {
+    try out.append(allocator, '"');
+    for (string) |c| switch (c) {
+        '"' => try out.appendSlice(allocator, "\\\""),
+        '\\' => try out.appendSlice(allocator, "\\\\"),
+        '\n' => try out.appendSlice(allocator, "\\n"),
+        '\r' => try out.appendSlice(allocator, "\\r"),
+        '\t' => try out.appendSlice(allocator, "\\t"),
+        else => if (c < 0x20) try out.print(allocator, "\\u{x:0>4}", .{c}) else try out.append(allocator, c),
+    };
+    try out.append(allocator, '"');
+}
+
+fn findNormalizedPart(doc: *const NormalizedDoc, part_name: []const u8) ?*const NormalizedPart {
+    for (doc.parts) |*part| if (std.mem.eql(u8, part.name, part_name)) return part;
+    return null;
 }
 
 fn topLevelBindings(allocator: std.mem.Allocator, maybe: ?*const Value) ![]ValueBinding {

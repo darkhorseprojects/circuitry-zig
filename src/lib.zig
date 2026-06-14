@@ -24,6 +24,10 @@ pub const confirm = shape.confirm;
 pub const normalize = shape.normalize;
 pub const stableDocId = shape.stableDocId;
 pub const materialize = shape.materialize;
+pub const renderNormalized = shape.renderNormalized;
+pub const renderNormalizedDoc = shape.renderNormalizedDoc;
+pub const renderNormalizedPart = shape.renderNormalizedPart;
+pub const renderNormalizedPartDoc = shape.renderNormalizedPartDoc;
 pub const renderCard = shape.renderCard;
 
 test {

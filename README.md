@@ -65,4 +65,6 @@ The library exposes `normalize`, which returns stable document facts:
 
 `materialize` walks those normalized facts with caller-provided callbacks, so tools can write the facts into their own substrate.
 
+`renderNormalized` and `renderNormalizedPart` return deterministic normalized material bytes. Executors can store or hash that material without reconstructing Circuitry semantics.
+
 Universal value labels are `bytes`, `text`, `number`, `boolean`, `list`, and `map`. Other labels are valid and preserved.
